@@ -7,6 +7,9 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions: [Sem
 
 ### Fixed
 
+- Forgejo security workflow: a push scans only the pushed commits (it scanned the whole history and
+  turned `main` red for old findings); the full history and the Trivy report run weekly.
+- `renovate.json` is not code for PR hygiene.
 - Secret scan on pull requests of private repositories failed with HTTP 403: the reusable
   workflow now grants the job `pull-requests: read` (#9).
 - `kit.py github` no longer enables CodeQL default setup in repositories with their own CodeQL

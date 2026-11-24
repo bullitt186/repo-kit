@@ -38,7 +38,7 @@ DEFAULT_TEST = [
 DEFAULT_EXEMPT = [
     "**/*.md", "*.md", "docs/**", ".github/**", ".forgejo/**", ".gitea/**", ".claude/**", "LICENSE*", ".gitignore",
     ".gitattributes", ".editorconfig", "**/*.png", "**/*.jpg", "**/*.jpeg", "**/*.svg",
-    "**/*.gif", "**/*.webp", ".pre-commit-config.yaml", ".vscode/**", ".devcontainer/**", "scripts/agent-stop-check.sh",
+    "**/*.gif", "**/*.webp", ".pre-commit-config.yaml", ".vscode/**", ".devcontainer/**", "scripts/agent-stop-check.sh", "renovate.json", ".renovaterc*",
 ]
 ADR_NAME = re.compile(r"^(\d{4})-[a-z0-9]+(?:-[a-z0-9]+)*\.md$")
 ADR_STATUS = re.compile(r"^(Proposed|Accepted|Deprecated|Superseded by \[?ADR-\d{4}\]?.*)$")

@@ -13,7 +13,7 @@ Decision: [ADR-0006](adr/0006-ci-standard.md).
 | 3 | **Type check** | where the language has one, in strict mode | mypy --strict, tsc --noEmit, pyright |
 | 4 | **Build** | the artefacts the project ships build (firmware, package, image, site) | language build, esphome compile, docker build |
 | 5 | **Secret scan** | no credentials enter the history | gitleaks (repo-kit `security` workflow) |
-| 6 | **Dependency review** | a pull request adds no dependency with a known high or critical vulnerability | GitHub dependency review (public repos); Forgejo has no diff mode, so Trivy `fs` reports there without blocking |
+| 6 | **Dependency review** | a pull request adds no dependency with a known high or critical vulnerability | GitHub dependency review (public repos); Forgejo has no diff mode, so Trivy `fs` reports there weekly without blocking |
 | 7 | **Static analysis** | security and quality queries on the code | CodeQL default setup (GitHub), Semgrep or the language's analyser (Forgejo) |
 | 8 | **PR hygiene** | tests and changelog travel with code, ADR format, scope reference, links | repo-kit `pr-hygiene` |
 
@@ -27,7 +27,7 @@ code are handled in review (killed or explained).
 | Category | What | Typical tools |
 |---|---|---|
 | **Mutation testing** | full run weekly, score reported; locally `make mutate` (or the repository's equivalent) on the lines a change touches | mutmut, Stryker, Mull, gremlins |
-| **Vulnerability scan** | all dependencies and images against current advisories, weekly | gitleaks (full history), Trivy, osv-scanner |
+| **Vulnerability scan** | all dependencies and images against current advisories, weekly; the secret scan covers the full history only here, pull requests and pushes scan their own commits | gitleaks (full history), Trivy, osv-scanner |
 | **Dependency updates** | automated update pull requests, weekly, at least 7 days after a release | Dependabot with `cooldown` (GitHub), Renovate with `minimumReleaseAge` (Forgejo) |
 
 ## Workflow hardening
