@@ -6,6 +6,9 @@ Checks a change set against its base:
   2. code changes come with a CHANGELOG entry    (waiver label: skip-changelog)
   3. ADRs in docs/adr/ are well-formed and listed in docs/adr/README.md
   4. relative links in changed Markdown files resolve
+  5. a change of docs/SCOPE.md comes with an ADR                        (ADR-0007)
+  6. code from outside contributors references an issue (Closes #N)
+  7. at most max_lines changed lines            (waiver label: large-change)
 
 Usage (local):  python3 pr_hygiene.py --base origin/main
 Usage (CI):     python3 pr_hygiene.py --base <sha> --labels "a,b"
@@ -14,6 +17,7 @@ Per-repository settings in .github/repo-kit.yml (all optional):
   test_paths:     globs of test files       (list)
   exempt_paths:   globs that are not code   (list, added to the defaults)
   changelog:      path, or "none"           (default CHANGELOG.md if it exists)
+  max_lines:      changed lines without the large-change label (default 800)
 Standard library only.
 """
 from __future__ import annotations
@@ -32,11 +36,15 @@ DEFAULT_TEST = [
 DEFAULT_EXEMPT = [
     "**/*.md", "*.md", "docs/**", ".github/**", ".forgejo/**", ".gitea/**", ".claude/**", "LICENSE*", ".gitignore",
     ".gitattributes", ".editorconfig", "**/*.png", "**/*.jpg", "**/*.jpeg", "**/*.svg",
-    "**/*.gif", "**/*.webp", ".pre-commit-config.yaml", ".vscode/**", ".devcontainer/**",
+    "**/*.gif", "**/*.webp", ".pre-commit-config.yaml", ".vscode/**", ".devcontainer/**", "scripts/agent-stop-check.sh",
 ]
 ADR_NAME = re.compile(r"^(\d{4})-[a-z0-9]+(?:-[a-z0-9]+)*\.md$")
 ADR_STATUS = re.compile(r"^(Proposed|Accepted|Deprecated|Superseded by \[?ADR-\d{4}\]?.*)$")
 ADR_SECTIONS = ("## Context", "## Decision", "## Consequences")
+LOCKFILES = ["*.lock", "**/*.lock", "**/package-lock.json", "package-lock.json", "**/go.sum", "go.sum",
+             "**/pnpm-lock.yaml", "pnpm-lock.yaml", "**/Cargo.lock"]
+EXTERNAL = {"CONTRIBUTOR", "FIRST_TIME_CONTRIBUTOR", "FIRST_TIMER", "NONE"}
+ISSUE_REF = re.compile(r"\b(close[sd]?|fix(e[sd])?|resolve[sd]?|refs?)\s+#\d+", re.I)
 MD_LINK = re.compile(r"(?<!!)\[[^\]]*\]\(([^)\s]+)(?:\s+\"[^\"]*\")?\)")
 
 
@@ -71,6 +79,16 @@ def changed_files(base: str, root: Path) -> list[tuple[str, str]]:
         cwd=root, capture_output=True, text=True, check=True,
     ).stdout
     return [(l.split("\t")[0], l.split("\t")[-1]) for l in out.splitlines() if l.strip()]
+
+
+def changed_lines(base: str, root: Path) -> dict[str, int]:
+    out = subprocess.run(["git", "diff", "--numstat", "--no-renames", f"{base}...HEAD"],
+                         cwd=root, capture_output=True, text=True, check=True).stdout
+    lines: dict[str, int] = {}
+    for row in out.splitlines():
+        added, removed, path = row.split("\t", 2)
+        lines[path] = (int(added) if added.isdigit() else 0) + (int(removed) if removed.isdigit() else 0)
+    return lines
 
 
 def check_adrs(root: Path) -> list[str]:
@@ -134,6 +152,9 @@ def main() -> int:
     ap.add_argument("--base", required=True, help="base ref or sha (merge base is used)")
     ap.add_argument("--labels", default="", help="comma-separated pull request labels")
     ap.add_argument("--root", default=".", help="repository root")
+    ap.add_argument("--author-association", default="",
+                    help="GitHub author_association of the pull request (empty: maintainer)")
+    ap.add_argument("--body-file", help="file with the pull request description")
     args = ap.parse_args()
     root = Path(args.root).resolve()
     labels = {l.strip() for l in args.labels.split(",") if l.strip()}
@@ -159,6 +180,19 @@ def main() -> int:
     if code and changelog != "none" and changelog not in paths and "skip-changelog" not in labels:
         errors.append(f"code changed without an entry in {changelog} under [Unreleased]"
                       " (waiver label 'skip-changelog' is maintainer-only)")
+    adr_changed = [p for st, p in files if st != "D" and ADR_NAME.match(Path(p).name) and p.startswith("docs/adr/")]
+    if "docs/SCOPE.md" in paths and not adr_changed:
+        errors.append("docs/SCOPE.md changed without an ADR in docs/adr/ (the scope is a maintainer decision)")
+    body = Path(args.body_file).read_text(encoding="utf-8") if args.body_file else ""
+    if code and args.author_association.upper() in EXTERNAL and not ISSUE_REF.search(body):
+        errors.append("code from a contributor needs a linked issue in the description (Closes #N);"
+                      " open one first and wait for the maintainer to mark it 'accepted'")
+    max_lines = int(cfg.get("max_lines", 800))
+    counted = set(code) | set(tests)   # docs and config do not count towards the size limit
+    size = sum(n for p, n in changed_lines(args.base, root).items() if p in counted and not match(p, LOCKFILES))
+    if size > max_lines and "large-change" not in labels:
+        errors.append(f"{size} changed lines exceed {max_lines}: split the pull request"
+                      " (waiver label 'large-change' is maintainer-only)")
     errors += check_adrs(root)
     errors += check_links(root, [p for st, p in files if st != "D" and p.endswith(".md")])
 
