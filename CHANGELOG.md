@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions: [Sem
 
 ## [Unreleased]
 
+### Fixed
+
+- `kit.py github` no longer enables CodeQL default setup in repositories with their own CodeQL
+  workflow; GitHub would then reject the workflow's uploads.
+
 ### Added
 
 - Forgejo seed `renovate.json` (7 days minimum release age, label `dependencies`).

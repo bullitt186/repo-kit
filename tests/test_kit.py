@@ -250,6 +250,27 @@ class GithubSlugTest(unittest.TestCase):
         self.assertIsNone(kit.github_slug("ssh://git@forge.example.invalid:2222/o/r.git"))
 
 
+class CodeqlDetectionTest(unittest.TestCase):
+    def test_advanced_codeql_workflow_is_detected(self) -> None:
+        import base64  # noqa: PLC0415
+        sys.path.insert(0, str(KIT / "scripts"))
+        import kit  # noqa: PLC0415
+        files = {"repos/o/r/contents/.github/workflows": [{"name": "ci.yml", "path": ".github/workflows/ci.yml"},
+                                                          {"name": "sec.yml", "path": ".github/workflows/sec.yml"}],
+                 "repos/o/r/contents/.github/workflows/ci.yml": {"content": base64.b64encode(b"run: pytest").decode()},
+                 "repos/o/r/contents/.github/workflows/sec.yml":
+                     {"content": base64.b64encode(b"uses: github/codeql-action/init@x").decode()}}
+        original = kit.gh
+        try:
+            kit.gh = lambda path, **_: files.get(path)
+            self.assertTrue(kit.has_codeql_workflow("o/r"))
+            del files["repos/o/r/contents/.github/workflows/sec.yml"]
+            files["repos/o/r/contents/.github/workflows"].pop()
+            self.assertFalse(kit.has_codeql_workflow("o/r"))
+        finally:
+            kit.gh = original
+
+
 class UpdateTest(unittest.TestCase):
     """kit.py update against a local bare repository as origin (no network)."""
 
