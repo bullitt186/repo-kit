@@ -175,6 +175,11 @@ class DependencyUpdateTest(unittest.TestCase):
         self.assertEqual(r.hygiene().returncode, 1)                  # without the label it is code
         self.assertEqual(r.hygiene("dependencies").returncode, 0)
 
+    def test_renovate_config_is_not_code(self) -> None:
+        r = Repo({"CHANGELOG.md": "# C\n"})
+        r.commit({"renovate.json": "{}\n"})
+        self.assertEqual(r.hygiene().returncode, 0, r.hygiene().stdout)
+
     def test_label_does_not_cover_code(self) -> None:
         r = Repo({"package.json": "{}\n"})
         r.commit({"package.json": '{"a": "2"}\n', "src/app.py": "x = 3\n"})

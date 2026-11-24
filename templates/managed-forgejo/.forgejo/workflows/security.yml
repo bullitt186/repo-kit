@@ -1,6 +1,6 @@
 # Managed by repo-kit (https://github.com/bullitt186/repo-kit). Do not edit here.
-# Secret scan of the pull request's commits (weekly: full history) and a dependency
-# vulnerability report (ADR-0006). Tool versions and checksums are pinned; repo-kit updates them.
+# Secret scan of the pull request's or push's commits (weekly: full history) and a weekly
+# dependency vulnerability report (ADR-0006). Tool versions and checksums are pinned; repo-kit updates them.
 name: Security
 
 on:
@@ -9,6 +9,7 @@ on:
   pull_request:
   schedule:
     - cron: "23 4 * * 1"
+  workflow_dispatch:
 
 env:
   GITLEAKS_VERSION: "8.30.1"
@@ -32,16 +33,24 @@ jobs:
           tar -xzf /tmp/$f -C /tmp gitleaks
       - name: Scan
         env:
-          BASE: ${{ github.event.pull_request.base.sha }}
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          PUSH_BEFORE: ${{ github.event.before }}
+          EVENT: ${{ github.event_name }}
         run: |
-          if [ -n "$BASE" ]; then
-            /tmp/gitleaks git --redact --no-banner --log-opts="$BASE..HEAD" .
+          # Pull request: its commits. Push: the pushed commits. Schedule: the full history (report).
+          if [ -n "$PR_BASE" ]; then range="$PR_BASE..HEAD"
+          elif [ "$EVENT" = "push" ] && [ -n "$PUSH_BEFORE" ] && [ "$PUSH_BEFORE" != "0000000000000000000000000000000000000000" ]; then range="$PUSH_BEFORE..HEAD"
+          else range=""; fi
+          if [ -n "$range" ]; then
+            /tmp/gitleaks git --redact --no-banner --log-opts="$range" .
           else
             /tmp/gitleaks git --redact --no-banner .
           fi
 
   dependency-scan:
     name: Dependency scan
+    # Report only, so it runs on the weekly schedule; downloading Trivy on every pull request is slow.
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: light
     steps:
       - uses: actions/checkout@v4
