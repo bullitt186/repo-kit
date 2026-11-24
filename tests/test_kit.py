@@ -224,7 +224,7 @@ class KitTest(unittest.TestCase):
         git(r.root, "remote", "add", "origin", "https://github.com/o/r.git")
         self.run_kit("apply", str(r.root))
         wf = (r.root / ".github/workflows/pr-hygiene.yml").read_text()
-        self.assertIn("hygiene-reusable.yml@v1", wf)
+        self.assertIn("hygiene-reusable.yml@stable", wf)
         self.assertFalse((r.root / ".forgejo").exists())
 
     def test_forgejo_workflow_change_is_not_code(self) -> None:

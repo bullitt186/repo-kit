@@ -19,7 +19,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: bullitt186/repo-kit
-          ref: v1
+          ref: stable
           path: .repo-kit
       - name: Check
         env:

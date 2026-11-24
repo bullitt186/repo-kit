@@ -39,7 +39,7 @@ every pull request:
 Waiver labels can only be set by the maintainer. Run it locally before you push:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/bullitt186/repo-kit/v1/scripts/pr_hygiene.py \
+curl -fsSL https://raw.githubusercontent.com/bullitt186/repo-kit/stable/scripts/pr_hygiene.py \
   | python3 - --base origin/main
 ```
 
@@ -60,6 +60,10 @@ labels from `CONTRIBUTING.md`, and on public repositories a ruleset for the
 default branch (pull request required, resolved threads, required checks
 including `hygiene / PR hygiene`, no force push or deletion) and one that
 protects `v*` tags. Existing rulesets are kept; missing checks are added.
+
+Releasing the kit: after a change is merged and CI on `main` is green,
+fast-forward the branch the repositories use: `git push origin main:stable`
+(never forced; see [ADR-0005](docs/adr/0005-repositories-call-the-stable-branch.md)).
 
 New repository: create it, run `apply`, fill in the repository part of
 `AGENTS.md` (purpose, layout, commands), commit through a pull request, then
