@@ -60,9 +60,14 @@ class Repo:
         git(self.root, "add", "-A")
         git(self.root, "commit", "-qm", "change")
 
-    def hygiene(self, labels: str = "") -> subprocess.CompletedProcess:
-        return subprocess.run([sys.executable, str(HYGIENE), "--base", "main", "--labels", labels,
-                               "--root", str(self.root)], capture_output=True, text=True)
+    def hygiene(self, labels: str = "", association: str = "", body: str | None = None) -> subprocess.CompletedProcess:
+        args = [sys.executable, str(HYGIENE), "--base", "main", "--labels", labels,
+                "--root", str(self.root), "--author-association", association]
+        if body is not None:
+            f = self.root.parent / f"{self.root.name}-body.md"
+            f.write_text(body, encoding="utf-8")
+            args += ["--body-file", str(f)]
+        return subprocess.run(args, capture_output=True, text=True)
 
 
 class HygieneTest(unittest.TestCase):
@@ -161,6 +166,48 @@ class HygieneTest(unittest.TestCase):
         self.assertNotIn("docs/a.md'", res.stdout)
 
 
+class ScopeRulesTest(unittest.TestCase):
+    def test_scope_change_needs_adr(self) -> None:
+        r = Repo({"docs/SCOPE.md": "# Scope\n", "docs/adr/README.md": INDEX,
+                  "docs/adr/0001-record-architecture-decisions.md": GOOD_ADR})
+        r.commit({"docs/SCOPE.md": "# Scope\n\nnew direction\n"})
+        self.assertIn("docs/SCOPE.md changed without an ADR", r.hygiene().stdout)
+        r.commit({"docs/adr/0002-new-direction.md": GOOD_ADR.replace("0001", "0002"),
+                  "docs/adr/README.md": INDEX + "| [0002](0002-new-direction.md) | x | Accepted |\n"})
+        self.assertEqual(r.hygiene().returncode, 0, r.hygiene().stdout)
+
+    def test_outside_contributor_needs_issue_reference(self) -> None:
+        r = Repo()
+        r.commit({"src/app.py": "x = 2\n", "tests/test_app.py": "t\n"})
+        for assoc in ("CONTRIBUTOR", "FIRST_TIME_CONTRIBUTOR", "NONE"):
+            with self.subTest(assoc):
+                res = r.hygiene(association=assoc, body="Adds a thing")
+                self.assertEqual(res.returncode, 1)
+                self.assertIn("linked issue", res.stdout)
+                self.assertEqual(r.hygiene(association=assoc, body="Closes #12").returncode, 0)
+        self.assertEqual(r.hygiene(association="OWNER", body="no issue").returncode, 0)
+        self.assertEqual(r.hygiene(association="", body="no issue").returncode, 0)   # Forgejo: no association
+
+    def test_outside_docs_change_needs_no_issue(self) -> None:
+        r = Repo()
+        r.commit({"README.md": "# r\n\ntypo fixed\n"})
+        self.assertEqual(r.hygiene(association="FIRST_TIME_CONTRIBUTOR", body="typo").returncode, 0)
+
+    def test_size_limit_and_lockfiles(self) -> None:
+        r = Repo({".github/repo-kit.yml": "max_lines: 10\n"})
+        r.commit({"src/big.py": "x\n" * 11, "tests/test_big.py": "t\n"})
+        res = r.hygiene()
+        self.assertEqual(res.returncode, 1)
+        self.assertIn("exceed 10", res.stdout)
+        self.assertEqual(r.hygiene("large-change").returncode, 0)
+        r2 = Repo({".github/repo-kit.yml": "max_lines: 10\n"})
+        r2.commit({"package-lock.json": "{}\n" * 50, "src/a.py": "x = 3\n", "tests/test_a.py": "t\n"})
+        self.assertEqual(r2.hygiene().returncode, 0, r2.hygiene().stdout)
+        r3 = Repo({".github/repo-kit.yml": "max_lines: 10\n"})
+        r3.commit({"docs/guide.md": "line\n" * 50})   # docs do not count
+        self.assertEqual(r3.hygiene().returncode, 0, r3.hygiene().stdout)
+
+
 class KitTest(unittest.TestCase):
     def run_kit(self, *args: str) -> subprocess.CompletedProcess:
         return subprocess.run([sys.executable, str(KITPY), *args], capture_output=True, text=True)
@@ -224,7 +271,7 @@ class KitTest(unittest.TestCase):
         git(r.root, "remote", "add", "origin", "https://github.com/o/r.git")
         self.run_kit("apply", str(r.root))
         wf = (r.root / ".github/workflows/pr-hygiene.yml").read_text()
-        self.assertIn("hygiene-reusable.yml@stable", wf)
+        self.assertIn("hygiene-reusable.yml@stable-v2", wf)
         self.assertFalse((r.root / ".forgejo").exists())
 
     def test_forgejo_workflow_change_is_not_code(self) -> None:
@@ -232,11 +279,20 @@ class KitTest(unittest.TestCase):
         r.commit({".forgejo/workflows/x.yml": "on: push\n"})
         self.assertEqual(r.hygiene().returncode, 0)
 
+    def test_v1_pr_template_is_upgraded_custom_one_is_kept(self) -> None:
+        r = Repo({".github/pull_request_template.md": "<!-- Definition of Done: CONTRIBUTING.md. Tick only what you did; old -->\n"})
+        self.run_kit("apply", str(r.root))
+        self.assertIn("Managed by repo-kit", (r.root / ".github/pull_request_template.md").read_text())
+        r2 = Repo({".github/pull_request_template.md": "Our own template\n"})
+        self.run_kit("apply", str(r2.root))
+        self.assertEqual((r2.root / ".github/pull_request_template.md").read_text(), "Our own template\n")
+        self.assertIn("custom .github/pull_request_template.md", self.run_kit("check", str(r2.root)).stdout)
+
     def test_check_reports_drift(self) -> None:
         r = Repo()
         res = self.run_kit("check", str(r.root))
         self.assertEqual(res.returncode, 1)
-        self.assertIn("drift AGENTS.md", res.stdout)
+        self.assertIn("drift  AGENTS.md", res.stdout)
 
 
 if __name__ == "__main__":

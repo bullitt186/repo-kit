@@ -1,0 +1,57 @@
+# Managed by repo-kit (https://github.com/bullitt186/repo-kit). Do not edit here.
+# Secret scan of the pull request's commits (weekly: full history) and a dependency
+# vulnerability report (ADR-0006). Tool versions and checksums are pinned; repo-kit updates them.
+name: Security
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    - cron: "23 4 * * 1"
+
+env:
+  GITLEAKS_VERSION: "8.30.1"
+  GITLEAKS_SHA256: "551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb"
+  TRIVY_VERSION: "0.76.2"
+  TRIVY_SHA256: "bc0fc726e017b8927a62b2d3531d7a84ee01769daf5c99ed866dced54089fdbf"
+
+jobs:
+  secret-scan:
+    name: Secret scan
+    runs-on: light
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Install gitleaks
+        run: |
+          f=gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz
+          curl -fsSL -o /tmp/$f https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/$f
+          echo "${GITLEAKS_SHA256}  /tmp/$f" | sha256sum -c -
+          tar -xzf /tmp/$f -C /tmp gitleaks
+      - name: Scan
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+        run: |
+          if [ -n "$BASE" ]; then
+            /tmp/gitleaks git --redact --no-banner --log-opts="$BASE..HEAD" .
+          else
+            /tmp/gitleaks git --redact --no-banner .
+          fi
+
+  dependency-scan:
+    name: Dependency scan
+    runs-on: light
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Trivy
+        run: |
+          f=trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz
+          curl -fsSL -o /tmp/$f https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/$f
+          echo "${TRIVY_SHA256}  /tmp/$f" | sha256sum -c -
+          tar -xzf /tmp/$f -C /tmp trivy
+      # Report only (maintainer decision): fixes arrive through update pull requests with a
+      # waiting period; a scanner finding is not a reason to block an unrelated pull request.
+      - name: Report vulnerable dependencies (high and critical, fixable)
+        run: /tmp/trivy fs --scanners vuln --severity HIGH,CRITICAL --ignore-unfixed --exit-code 0 --no-progress .

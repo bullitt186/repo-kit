@@ -19,10 +19,15 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: bullitt186/repo-kit
-          ref: stable
+          ref: stable-v2
           path: .repo-kit
       - name: Check
         env:
           BASE: ${{ github.event.pull_request.base.sha }}
           LABELS: ${{ join(github.event.pull_request.labels.*.name, ',') }}
-        run: python3 .repo-kit/scripts/pr_hygiene.py --base "$BASE" --labels "$LABELS"
+          ASSOCIATION: ${{ github.event.pull_request.author_association }}
+          BODY: ${{ github.event.pull_request.body }}
+        run: |
+          printf '%s' "$BODY" > "$RUNNER_TEMP/pr-body.md"
+          python3 .repo-kit/scripts/pr_hygiene.py --base "$BASE" --labels "$LABELS" \
+            --author-association "$ASSOCIATION" --body-file "$RUNNER_TEMP/pr-body.md"

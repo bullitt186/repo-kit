@@ -24,7 +24,7 @@ from pathlib import Path
 
 KIT = Path(__file__).resolve().parent.parent
 TEMPLATES = KIT / "templates"
-VERSION = "1"
+VERSION = "2"
 BEGIN = f"<!-- repo-kit:begin v{VERSION} (managed, do not edit; https://github.com/bullitt186/repo-kit) -->"
 END = "<!-- repo-kit:end -->"
 BLOCKS = {"AGENTS.md": "AGENTS.block.md", "CONTRIBUTING.md": "CONTRIBUTING.block.md"}
@@ -38,10 +38,14 @@ LABELS = {
     "adr": ("0e8a16", "Adds or changes an architecture decision record"),
     "no-test-change": ("c5def5", "Maintainer waiver: PR hygiene test rule"),
     "skip-changelog": ("c5def5", "Maintainer waiver: PR hygiene changelog rule"),
+    "accepted": ("0e8a16", "In scope; a pull request is welcome (set by the maintainer)"),
+    "out-of-scope": ("ededed", "Does not fit docs/SCOPE.md"),
+    "large-change": ("c5def5", "Maintainer waiver: PR hygiene size rule"),
     "bug": ("d73a4a", "Something does not work as documented"),
     "enhancement": ("a2eeef", "New feature or request"),
 }
 HYGIENE_CHECK = "hygiene / PR hygiene"
+SECURITY_CHECKS = ["security / Secret scan", "security / Dependency review"]
 
 
 def block_text() -> dict[str, str]:
@@ -64,6 +68,40 @@ def forge(repo: Path) -> str:
     return "github" if r.returncode != 0 or "github.com" in r.stdout else "forgejo"
 
 
+MANAGED_MARK = "Managed by repo-kit"
+# Files the kit wrote as seeds in v1 and manages since v2 (recognised by their first line).
+V1_MARKS = ("<!-- Definition of Done: CONTRIBUTING.md. Tick only what you did",)
+
+
+def kit_owned(path: Path) -> bool:
+    text = path.read_text(encoding="utf-8")
+    return MANAGED_MARK in text or any(text.startswith(m) for m in V1_MARKS)
+
+
+def managed_files(repo: Path) -> dict[Path, str]:
+    """Whole files the kit owns for this repository's forge."""
+    managed = TEMPLATES / ("managed-forgejo" if forge(repo) == "forgejo" else "managed")
+    return {repo / p.relative_to(managed): p.read_text(encoding="utf-8")
+            for p in sorted(managed.rglob("*")) if p.is_file() and not p.name.endswith(".block.md")}
+
+
+def findings(repo: Path) -> list[str]:
+    """Things a repository must fix by hand: placeholders, custom files, missing stop hook."""
+    out = []
+    for rel in ("AGENTS.md", "docs/SCOPE.md", "scripts/agent-stop-check.sh"):
+        f = repo / rel
+        if f.exists() and "TODO" in f.read_text(encoding="utf-8"):
+            out.append(f"todo   {rel} has unfilled TODO placeholders")
+    for path in managed_files(repo):
+        if path.exists() and not kit_owned(path):
+            out.append(f"custom {path.relative_to(repo)} is the repository's own (kept); "
+                       "it must cover what the kit's version checks (docs/CI_STANDARD.md)")
+    settings = repo / ".claude" / "settings.json"
+    if settings.exists() and "agent-stop-check" not in settings.read_text(encoding="utf-8"):
+        out.append("hook   .claude/settings.json has no Stop hook running scripts/agent-stop-check.sh")
+    return out
+
+
 def planned(repo: Path) -> dict[Path, str]:
     """Target content for every file the kit wants to write in repo."""
     out: dict[Path, str] = {}
@@ -76,10 +114,14 @@ def planned(repo: Path) -> dict[Path, str]:
                 continue   # existing ADRs keep their own numbering
             if not (repo / rel).exists():
                 out[repo / rel] = path.read_text(encoding="utf-8").replace("{{DATE}}", today)
-    managed = TEMPLATES / ("managed-forgejo" if forge(repo) == "forgejo" else "managed")
-    for path in sorted(managed.rglob("*")):
-        if path.is_file() and not path.name.endswith(".block.md"):
-            out[repo / path.relative_to(managed)] = path.read_text(encoding="utf-8")
+    for kind in ("seed-github",) if forge(repo) == "github" else ():
+        for path in sorted((TEMPLATES / kind).rglob("*")):
+            rel = path.relative_to(TEMPLATES / kind)
+            if path.is_file() and not (repo / rel).exists():
+                out[repo / rel] = path.read_text(encoding="utf-8")
+    for path, content in managed_files(repo).items():
+        if not path.exists() or kit_owned(path):
+            out[path] = content
     # AGENTS.md: block on top, repository part below
     agents = repo / "AGENTS.md"
     if agents.exists():
@@ -122,13 +164,14 @@ def cmd_apply(repo: Path) -> int:
 def cmd_check(repo: Path) -> int:
     drift = planned(repo)
     for path in drift:
-        print(f"drift {path.relative_to(repo)}")
-    agents = repo / "AGENTS.md"
-    if agents.exists() and "TODO" in agents.read_text(encoding="utf-8"):
-        print("todo  AGENTS.md has unfilled TODO placeholders")
-        return 1
-    print("in sync" if not drift else f"{len(drift)} file(s) differ from repo-kit v{VERSION}")
-    return 1 if drift else 0
+        print(f"drift  {path.relative_to(repo)}")
+    found = findings(repo)
+    for f in found:
+        print(f)
+    blocking = [f for f in found if not f.startswith("custom")]
+    print("in sync" if not drift and not blocking else
+          f"{len(drift)} file(s) differ from repo-kit v{VERSION}, {len(blocking)} finding(s)")
+    return 1 if drift or blocking else 0
 
 
 def gh(*args: str, data: dict | None = None, check: bool = True) -> dict | list | None:
@@ -164,13 +207,32 @@ def cmd_github(repo: str, checks: list[str], dry: bool) -> int:
         else:
             do(f"create label {name}", "-X", "POST", f"repos/{repo}/labels",
                data={"name": name, "color": color, "description": desc})
+    do("Actions: workflow token read-only, approval for all outside contributors' workflows",
+       "-X", "PUT", f"repos/{repo}/actions/permissions/workflow",
+       data={"default_workflow_permissions": "read", "can_approve_pull_request_reviews": False})
+    if not dry:
+        # Tighten only GitHub's default; a repository's own choice (looser or stricter) stays.
+        cur = gh(f"repos/{repo}/actions/permissions/fork-pr-contributor-approval", check=False) or {}
+        if cur.get("approval_policy") in (None, "first_time_contributors"):
+            gh("-X", "PUT", f"repos/{repo}/actions/permissions/fork-pr-contributor-approval",
+               data={"approval_policy": "all_external_contributors"}, check=False)
+        gh("-X", "PUT", f"repos/{repo}/vulnerability-alerts", check=False)
+        gh("-X", "PUT", f"repos/{repo}/automated-security-fixes", check=False)
     if info["private"]:
-        print("skip rulesets: private repository on the Free plan")
+        print("skip rulesets and code scanning: private repository on the Free plan")
         return 0
+    do("enable secret scanning with push protection", "-X", "PATCH", f"repos/{repo}", data={
+        "security_and_analysis": {"secret_scanning": {"status": "enabled"},
+                                  "secret_scanning_push_protection": {"status": "enabled"}}})
     if not dry:
         gh("-X", "PUT", f"repos/{repo}/private-vulnerability-reporting", check=False)
+        if gh("-X", "PATCH", f"repos/{repo}/code-scanning/default-setup",
+              data={"state": "configured", "query_suite": "extended"}, check=False) is None:
+            print("CodeQL default setup not enabled (advanced setup present or unsupported language)")
     rulesets = {r["name"]: r["id"] for r in gh(f"repos/{repo}/rulesets") or []}
-    contexts = list(dict.fromkeys([*checks, HYGIENE_CHECK]))
+    sec = gh(f"repos/{repo}/contents/.github/workflows/security.yml", check=False)
+    kit_security = bool(sec) and MANAGED_MARK in __import__("base64").b64decode(sec["content"]).decode()
+    contexts = list(dict.fromkeys([*checks, HYGIENE_CHECK, *(SECURITY_CHECKS if kit_security else [])]))
     main_rules = {
         "name": "main", "target": "branch", "enforcement": "active",
         "conditions": {"ref_name": {"include": ["~DEFAULT_BRANCH"], "exclude": []}},
