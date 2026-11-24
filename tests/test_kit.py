@@ -212,6 +212,26 @@ class KitTest(unittest.TestCase):
         self.assertNotIn("\nold\n", text)
         self.assertIn("mine", text)
 
+    def test_forgejo_origin_gets_forgejo_workflow(self) -> None:
+        r = Repo()
+        git(r.root, "remote", "add", "origin", "ssh://git@forge.example.invalid:2222/o/r.git")
+        self.run_kit("apply", str(r.root))
+        self.assertTrue((r.root / ".forgejo/workflows/pr-hygiene.yml").exists())
+        self.assertFalse((r.root / ".github/workflows/pr-hygiene.yml").exists())
+
+    def test_github_origin_gets_reusable_workflow(self) -> None:
+        r = Repo()
+        git(r.root, "remote", "add", "origin", "https://github.com/o/r.git")
+        self.run_kit("apply", str(r.root))
+        wf = (r.root / ".github/workflows/pr-hygiene.yml").read_text()
+        self.assertIn("hygiene-reusable.yml@v1", wf)
+        self.assertFalse((r.root / ".forgejo").exists())
+
+    def test_forgejo_workflow_change_is_not_code(self) -> None:
+        r = Repo()
+        r.commit({".forgejo/workflows/x.yml": "on: push\n"})
+        self.assertEqual(r.hygiene().returncode, 0)
+
     def test_check_reports_drift(self) -> None:
         r = Repo()
         res = self.run_kit("check", str(r.root))

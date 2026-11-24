@@ -58,6 +58,12 @@ def replace_block(text: str, block: str) -> str | None:
     return text[:start] + block + text[end + len(END):]
 
 
+def forge(repo: Path) -> str:
+    """'github' when origin is on github.com or there is no origin, else 'forgejo'."""
+    r = subprocess.run(["git", "remote", "get-url", "origin"], cwd=repo, capture_output=True, text=True)
+    return "github" if r.returncode != 0 or "github.com" in r.stdout else "forgejo"
+
+
 def planned(repo: Path) -> dict[Path, str]:
     """Target content for every file the kit wants to write in repo."""
     out: dict[Path, str] = {}
@@ -70,9 +76,10 @@ def planned(repo: Path) -> dict[Path, str]:
                 continue   # existing ADRs keep their own numbering
             if not (repo / rel).exists():
                 out[repo / rel] = path.read_text(encoding="utf-8").replace("{{DATE}}", today)
-    for path in sorted((TEMPLATES / "managed").rglob("*")):
+    managed = TEMPLATES / ("managed-forgejo" if forge(repo) == "forgejo" else "managed")
+    for path in sorted(managed.rglob("*")):
         if path.is_file() and not path.name.endswith(".block.md"):
-            out[repo / path.relative_to(TEMPLATES / "managed")] = path.read_text(encoding="utf-8")
+            out[repo / path.relative_to(managed)] = path.read_text(encoding="utf-8")
     # AGENTS.md: block on top, repository part below
     agents = repo / "AGENTS.md"
     if agents.exists():
