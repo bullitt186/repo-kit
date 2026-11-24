@@ -1,0 +1,23 @@
+# Managed by repo-kit (https://github.com/bullitt186/repo-kit). Do not edit here;
+# per-repository settings go into .github/repo-kit.yml.
+name: PR hygiene
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, labeled, unlabeled, edited]
+
+jobs:
+  hygiene:
+    name: PR hygiene
+    runs-on: light
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Check
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+          LABELS: ${{ join(github.event.pull_request.labels.*.name, ',') }}
+        run: |
+          curl -fsSL https://raw.githubusercontent.com/bullitt186/repo-kit/v1/scripts/pr_hygiene.py -o /tmp/pr_hygiene.py
+          python3 /tmp/pr_hygiene.py --base "$BASE" --labels "$LABELS"

@@ -30,7 +30,7 @@ DEFAULT_TEST = [
     "**/test_*", "**/*_test.*", "**/*.test.*", "**/*.spec.*", "**/*_spec.*",
 ]
 DEFAULT_EXEMPT = [
-    "**/*.md", "*.md", "docs/**", ".github/**", ".claude/**", "LICENSE*", ".gitignore",
+    "**/*.md", "*.md", "docs/**", ".github/**", ".forgejo/**", ".gitea/**", ".claude/**", "LICENSE*", ".gitignore",
     ".gitattributes", ".editorconfig", "**/*.png", "**/*.jpg", "**/*.jpeg", "**/*.svg",
     "**/*.gif", "**/*.webp", ".pre-commit-config.yaml", ".vscode/**", ".devcontainer/**",
 ]
