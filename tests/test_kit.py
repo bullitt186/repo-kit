@@ -1,6 +1,7 @@
 """Tests for scripts/pr_hygiene.py and scripts/kit.py. Run: python3 -m unittest discover tests"""
 from __future__ import annotations
 
+import json
 import subprocess
 import sys
 import tempfile
@@ -60,14 +61,15 @@ class Repo:
         git(self.root, "add", "-A")
         git(self.root, "commit", "-qm", "change")
 
-    def hygiene(self, labels: str = "", association: str = "", body: str | None = None) -> subprocess.CompletedProcess:
+    def hygiene(self, labels: str = "", association: str = "", body: str | None = None,
+                today: str = "2027-01-01") -> subprocess.CompletedProcess:
         args = [sys.executable, str(HYGIENE), "--base", "main", "--labels", labels,
-                "--root", str(self.root), "--author-association", association]
+                "--root", str(self.root), "--author-association", association, "--today", today]
         if body is not None:
             f = self.root.parent / f"{self.root.name}-body.md"
             f.write_text(body, encoding="utf-8")
             args += ["--body-file", str(f)]
-        return subprocess.run(args, capture_output=True, text=True)
+        return subprocess.run(args, capture_output=True, text=True, check=False)
 
 
 class HygieneTest(unittest.TestCase):
@@ -208,9 +210,78 @@ class ScopeRulesTest(unittest.TestCase):
         self.assertEqual(r3.hygiene().returncode, 0, r3.hygiene().stdout)
 
 
+class GracePeriodTest(unittest.TestCase):
+    def test_new_rule_warns_before_its_date_and_blocks_after(self) -> None:
+        r = Repo({".github/repo-kit.yml": "max_lines: 10\n"})
+        r.commit({"src/big.py": "x\n" * 11, "tests/test_big.py": "t\n"})
+        before = r.hygiene(today="2026-12-14")
+        self.assertEqual(before.returncode, 0)
+        self.assertIn("WARN", before.stdout)
+        self.assertIn("blocks from 2026-12-15", before.stdout)
+        self.assertEqual(r.hygiene(today="2026-12-15").returncode, 1)
+
+    def test_rules_without_date_block_immediately(self) -> None:
+        r = Repo()
+        r.commit({"src/app.py": "x = 2\n"})
+        self.assertEqual(r.hygiene(today="2000-01-01").returncode, 1)
+
+
+class UpdateTest(unittest.TestCase):
+    """kit.py update against a local bare repository as origin (no network)."""
+
+    def setUp(self) -> None:
+        self.r = Repo()
+        git(self.r.root, "checkout", "-q", "main")
+        self.bare = Path(tempfile.mkdtemp()) / "origin.git"
+        git(self.r.root.parent, "init", "-q", "--bare", "-b", "main", str(self.bare))
+        git(self.r.root, "remote", "add", "origin", str(self.bare))
+        git(self.r.root, "push", "-q", "-u", "origin", "main")
+        git(self.r.root, "remote", "set-head", "origin", "main")
+
+    def update(self) -> dict:
+        res = subprocess.run([sys.executable, str(KITPY), "update", "--no-push", str(self.r.root)],
+                             capture_output=True, text=True, check=False)
+        self.assertEqual(res.returncode, 0, res.stderr)
+        return json.loads(res.stdout.strip().splitlines()[-1])
+
+    def test_repo_without_kit_is_reported_not_changed(self) -> None:
+        out = self.update()
+        self.assertIn("no kit yet", out["status"])
+        self.assertIn("percent", out)
+        self.assertFalse((self.r.root / ".claude/worktrees/kit-update").exists())
+
+    def test_outdated_kit_repo_gets_an_update_commit_and_clean_checkout_stays(self) -> None:
+        self.r.write({"AGENTS.md": "# A\n\n<!-- repo-kit:begin v1 -->\nold\n<!-- repo-kit:end -->\n"})
+        git(self.r.root, "add", "-A")
+        git(self.r.root, "commit", "-qm", "kit v1")
+        git(self.r.root, "push", "-q", "origin", "main")
+        out = self.update()
+        self.assertTrue(out["status"].startswith("update:"), out)
+        branch = [b for b in git(self.r.root, "branch").split() if b.startswith("chore/repo-kit-update-")]
+        self.assertEqual(len(branch), 1)
+        self.assertIn("repo-kit:begin v", git(self.r.root, "show", f"{branch[0]}:AGENTS.md"))
+        self.assertEqual(git(self.r.root, "status", "--porcelain"), "")   # the checkout itself is untouched
+
+    def test_scorecard_table_and_drop(self) -> None:
+        tmp = Path(tempfile.mkdtemp())
+        prev = tmp / "prev.md"
+        prev.write_text("| Repo | Gesamt |\n|---|---|\n| a | 80 % |\n| b | 50 % |\n", encoding="utf-8")
+        lines = "\n".join([json.dumps({"repo": "a", "percent": 70, "score": {"tests": "green", "lint": "red"}}),
+                           json.dumps({"repo": "b", "percent": 60, "score": {"tests": "green", "lint": "green"}}),
+                           json.dumps({"repo": "c", "status": "fork, skipped"})])
+        res = subprocess.run([sys.executable, str(KITPY), "scorecard", "--out", str(tmp / "out.md"),
+                              "--previous", str(prev)], input=lines, capture_output=True, text=True, check=False)
+        self.assertEqual(res.returncode, 0, res.stderr)
+        table = (tmp / "out.md").read_text(encoding="utf-8")
+        self.assertIn("| a | 70 % | -10 | 🟢 | 🔴 |", table)
+        self.assertIn("| b | 60 % | +10 | 🟢 | 🟢 |", table)
+        self.assertIn("fork, skipped", table)
+        self.assertEqual(res.stdout.strip(), "drop a: 80 % → 70 %")
+
+
 class KitTest(unittest.TestCase):
     def run_kit(self, *args: str) -> subprocess.CompletedProcess:
-        return subprocess.run([sys.executable, str(KITPY), *args], capture_output=True, text=True)
+        return subprocess.run([sys.executable, str(KITPY), *args], capture_output=True, text=True, check=False)
 
     def test_apply_on_empty_repo_creates_setup_and_is_idempotent(self) -> None:
         r = Repo()
@@ -287,6 +358,34 @@ class KitTest(unittest.TestCase):
         self.run_kit("apply", str(r2.root))
         self.assertEqual((r2.root / ".github/pull_request_template.md").read_text(), "Our own template\n")
         self.assertIn("custom .github/pull_request_template.md", self.run_kit("check", str(r2.root)).stdout)
+
+    def test_apply_refuses_forks_unless_own_product(self) -> None:
+        r = Repo()
+        git(r.root, "remote", "add", "upstream", "https://forge.example.invalid/other/project.git")
+        res = self.run_kit("apply", str(r.root))
+        self.assertEqual(res.returncode, 2)
+        self.assertIn("fork", res.stdout)
+        self.assertFalse((r.root / "AGENTS.md").exists())
+        self.assertEqual(self.run_kit("apply", "--own-product", str(r.root)).returncode, 0)
+        self.assertTrue((r.root / "AGENTS.md").exists())
+
+    def test_score_lights(self) -> None:
+        r = Repo()
+        res = json.loads(self.run_kit("score", "--json", str(r.root)).stdout)
+        self.assertEqual(res["disciplines"]["instructions"]["light"], "red")
+        self.assertEqual(res["percent"], 0)
+        self.run_kit("apply", str(r.root))
+        r.write({".github/repo-kit.yml": "ci_exceptions:\n  - \"types: no type checker for this language\"\n",
+                 ".github/workflows/ci.yml": "steps:\n  - run: pytest && ruff check . && mutmut run\n"})
+        res = json.loads(self.run_kit("score", "--json", str(r.root)).stdout)
+        d = {k: v["light"] for k, v in res["disciplines"].items()}
+        self.assertEqual(d["instructions"], "yellow")   # seeded AGENTS.md still has TODOs
+        self.assertEqual(d["scope"], "yellow")
+        self.assertEqual((d["adrs"], d["hygiene"], d["security"]), ("green", "green", "green"))
+        self.assertEqual((d["tests"], d["lint"], d["mutation"]), ("green", "green", "green"))
+        self.assertEqual(d["types"], "n/a")
+        self.assertEqual(d["stop hook"], "yellow")      # FAST_CHECK still TODO
+        self.assertTrue(0 < res["percent"] < 100)
 
     def test_check_reports_drift(self) -> None:
         r = Repo()

@@ -1,0 +1,10 @@
+[tool.ruff]
+line-length = 120
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "B", "UP", "PL", "RUF", "FURB", "EXE", "I"]
+ignore = [
+    "PLR0912", "PLR0915", "PLR2004",  # long check functions with literal thresholds read best as they are
+    "E501",                          # long template strings; the formatter is not used on this repository
+]

@@ -19,3 +19,5 @@ numbered in order, written from `template.md`. When to write one: `AGENTS.md`.
 | [0006](0006-ci-standard.md) | A minimum CI standard for every repository | Accepted |
 | [0007](0007-scope-guards-against-drift.md) | Scope guards against changes in the wrong direction | Accepted |
 | [0008](0008-release-standard.md) | One release standard | Accepted |
+| [0009](0009-lifecycle-pull-grace-scorecard.md) | Kit lifecycle: weekly pull, grace periods, scorecard | Accepted |
+| [0010](0010-no-kit-in-forks.md) | No kit in forks of other people's projects | Accepted |
