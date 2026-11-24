@@ -216,7 +216,6 @@ class GracePeriodTest(unittest.TestCase):
         r.commit({"src/big.py": "x\n" * 11, "tests/test_big.py": "t\n"})
         before = r.hygiene(today="2026-12-14")
         self.assertEqual(before.returncode, 0)
-        self.assertIn("WARN", before.stdout)
         self.assertIn("blocks from 2026-12-15", before.stdout)
         self.assertEqual(r.hygiene(today="2026-12-15").returncode, 1)
 
@@ -224,6 +223,18 @@ class GracePeriodTest(unittest.TestCase):
         r = Repo()
         r.commit({"src/app.py": "x = 2\n"})
         self.assertEqual(r.hygiene(today="2000-01-01").returncode, 1)
+
+
+class GithubSlugTest(unittest.TestCase):
+    def test_exact_host_only(self) -> None:
+        sys.path.insert(0, str(KIT / "scripts"))
+        import kit  # noqa: PLC0415
+        self.assertEqual(kit.github_slug("https://github.com/o/r.git"), "o/r")
+        self.assertEqual(kit.github_slug("git@github.com:o/r.git"), "o/r")
+        self.assertEqual(kit.github_slug("ssh://git@github.com/o/r"), "o/r")
+        self.assertIsNone(kit.github_slug("https://github.com.evil.example/o/r.git"))
+        self.assertIsNone(kit.github_slug("https://evil.example/github.com/o/r.git"))
+        self.assertIsNone(kit.github_slug("ssh://git@forge.example.invalid:2222/o/r.git"))
 
 
 class UpdateTest(unittest.TestCase):

@@ -22,6 +22,7 @@ from __future__ import annotations
 import argparse
 import datetime as dt
 import json
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -66,10 +67,19 @@ def replace_block(text: str, block: str) -> str | None:
     return text[:start] + block + text[end + len(END):]
 
 
+GITHUB_URL = re.compile(r"^(?:https://|ssh://git@|git@)github\.com[:/]([^/]+/[^/]+?)(?:\.git)?/?$")
+
+
+def github_slug(url: str) -> str | None:
+    """owner/name when the URL points to github.com (exact host), else None."""
+    m = GITHUB_URL.match(url.strip())
+    return m.group(1) if m else None
+
+
 def forge(repo: Path) -> str:
     """'github' when origin is on github.com or there is no origin, else 'forgejo'."""
     r = subprocess.run(["git", "remote", "get-url", "origin"], cwd=repo, capture_output=True, text=True, check=False)
-    return "github" if r.returncode != 0 or "github.com" in r.stdout else "forgejo"
+    return "github" if r.returncode != 0 or github_slug(r.stdout) else "forgejo"
 
 
 MANAGED_MARK = "Managed by repo-kit"
@@ -176,8 +186,8 @@ def is_fork(repo: Path) -> bool:
         return True
     url = subprocess.run(["git", "remote", "get-url", "origin"], cwd=repo,
                          capture_output=True, text=True, check=False).stdout.strip()
-    if "github.com" in url:
-        slug = url.split("github.com")[-1].lstrip(":/").removesuffix(".git")
+    slug = github_slug(url)
+    if slug:
         info = gh(f"repos/{slug}", check=False)
         return bool(info and info.get("fork"))
     return False
