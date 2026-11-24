@@ -7,6 +7,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions: [Sem
 
 ### Fixed
 
+- Secret scan on pull requests of private repositories failed with HTTP 403: the reusable
+  workflow now grants the job `pull-requests: read` (#9).
 - `kit.py github` no longer enables CodeQL default setup in repositories with their own CodeQL
   workflow; GitHub would then reject the workflow's uploads.
 
