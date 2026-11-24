@@ -5,6 +5,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions: [Sem
 
 ## [Unreleased]
 
+### Added
+
+- Kit lifecycle (ADR-0009): `kit.py update` (weekly pull into a dated update branch and pull
+  request), `kit.py score` and `kit.py scorecard` (traffic light per discipline, trend), grace
+  periods for new PR hygiene rules (the scope, issue-link and size rules warn until 2026-12-15).
+- `kit.py apply` refuses forks of other people's projects unless `--own-product` (ADR-0010).
+- `ci_exceptions` in `.github/repo-kit.yml`; this repository lints with ruff in CI.
+
 ### Upgrade notes
 
 - Kit v2 runs on the branch `stable-v2`. Repositories move with `kit.py apply` (the managed

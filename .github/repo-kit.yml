@@ -1,2 +1,5 @@
 test_paths:
   - tests/**
+ci_exceptions:   # disciplines of the CI standard this repository does not run, with the reason
+  - "types: two standard-library scripts; tests and ruff cover them, a type checker adds a dependency for little gain"
+  - "mutation: hand-made mutants in review (see AGENTS.md); no mutation tool for this size"

@@ -153,7 +153,7 @@ change.
 | `templates/managed/` | blocks and files the kit owns and refreshes (`*.block.md` go between markers) |
 | `templates/managed-forgejo/` | managed files for repositories on Forgejo |
 | `templates/seed/`, `templates/seed-github/` | files created in a repository when missing, never overwritten |
-| `scripts/kit.py` | `apply`, `check`, `github` |
+| `scripts/kit.py` | `apply`, `check`, `score`, `update`, `scorecard`, `github` |
 | `scripts/pr_hygiene.py` | the PR hygiene check, standard library only |
 | `.github/workflows/hygiene-reusable.yml`, `security-reusable.yml` | reusable workflows the repositories call at `@stable-v2` |
 | `docs/CI_STANDARD.md`, `docs/RELEASING.md` | standards the repositories implement |
@@ -165,7 +165,7 @@ change.
 | Task | Command |
 |---|---|
 | Install / set up | Python 3.10+ and git; nothing to install |
-| Fast check (before every commit, also the stop hook) | `python3 -m unittest discover tests && python3 scripts/kit.py check .` |
+| Fast check (before every commit, also the stop hook) | `ruff check scripts tests && python3 -m unittest discover tests && python3 scripts/kit.py check .` |
 | Full check | same as the fast check |
 | Mutation testing of changed code | not set up; tests are checked by hand-made mutants in review (CI standard exception: small standard-library scripts) |
 

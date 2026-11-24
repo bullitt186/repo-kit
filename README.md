@@ -68,6 +68,8 @@ Settings (`.github/repo-kit.yml`): `test_paths` (globs, replace the defaults),
 python3 scripts/kit.py apply  ../some-repo     # add missing files, refresh shared blocks
 python3 scripts/kit.py check  ../some-repo     # drift, unfilled TODOs, missing stop hook -> exit 1
 python3 scripts/kit.py github owner/some-repo --checks "Tests,Lint"   # settings, labels, rulesets
+python3 scripts/kit.py score  ../some-repo     # traffic light per discipline of the standard
+python3 scripts/kit.py update ../some-repo     # weekly pull: dated update branch and pull request
 ```
 
 `github` sets squash merge with branch deletion and auto-merge, creates the
@@ -88,6 +90,26 @@ fast-forward the branch the repositories use: `git push origin main:stable-v2`
 New repository: create it, run `apply`, fill in the repository part of
 `AGENTS.md` (purpose, layout, commands), commit through a pull request, then
 run `github` with the names of its CI checks.
+
+## Lifecycle
+
+- **Pull, not push** ([ADR-0009](docs/adr/0009-lifecycle-pull-grace-scorecard.md)): a weekly run
+  finds every clone whose default branch carries the kit block and runs `kit.py update` from the
+  newest `stable-vN`. Changes arrive as a pull request `chore: repo-kit update`; an agent is only
+  needed for findings that need judgement.
+- **Grace periods:** new PR hygiene rules warn until their date in `ENFORCE_FROM`, then block.
+  Only changed files are judged, so new rules never force a refactoring of existing code.
+- **Scorecard:** `kit.py score` per repository; the weekly run collects one table with the
+  trend. Exceptions to the CI standard go into `.github/repo-kit.yml`:
+  `ci_exceptions: ["types: <reason>"]`.
+- **Breaking kit changes** go to the next `stable-vN` branch ([ADR-0005](docs/adr/0005-repositories-call-the-stable-branch.md)).
+
+## Forks
+
+The kit is not applied to forks of other people's projects
+([ADR-0010](docs/adr/0010-no-kit-in-forks.md)); `kit.py apply` refuses them. Their upstream's rules
+apply; personal agent notes go into an untracked `CLAUDE.local.md`. A fork that became your own
+product records that in an ADR and uses `--own-product`.
 
 ## Decisions
 
