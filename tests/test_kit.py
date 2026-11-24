@@ -168,6 +168,19 @@ class HygieneTest(unittest.TestCase):
         self.assertNotIn("docs/a.md'", res.stdout)
 
 
+class DependencyUpdateTest(unittest.TestCase):
+    def test_labelled_dependency_update_needs_no_test_or_changelog(self) -> None:
+        r = Repo({"CHANGELOG.md": "# C\n", "package.json": "{}\n"})
+        r.commit({"package.json": '{"a": "2"}\n', "package-lock.json": "{}\n"})
+        self.assertEqual(r.hygiene().returncode, 1)                  # without the label it is code
+        self.assertEqual(r.hygiene("dependencies").returncode, 0)
+
+    def test_label_does_not_cover_code(self) -> None:
+        r = Repo({"package.json": "{}\n"})
+        r.commit({"package.json": '{"a": "2"}\n', "src/app.py": "x = 3\n"})
+        self.assertEqual(r.hygiene("dependencies").returncode, 1)
+
+
 class ScopeRulesTest(unittest.TestCase):
     def test_scope_change_needs_adr(self) -> None:
         r = Repo({"docs/SCOPE.md": "# Scope\n", "docs/adr/README.md": INDEX,
@@ -346,6 +359,8 @@ class KitTest(unittest.TestCase):
         git(r.root, "remote", "add", "origin", "ssh://git@forge.example.invalid:2222/o/r.git")
         self.run_kit("apply", str(r.root))
         self.assertTrue((r.root / ".forgejo/workflows/pr-hygiene.yml").exists())
+        self.assertIn('"minimumReleaseAge": "7 days"', (r.root / "renovate.json").read_text())
+        self.assertFalse((r.root / ".github/dependabot.yml").exists())
         self.assertFalse((r.root / ".github/workflows/pr-hygiene.yml").exists())
 
     def test_github_origin_gets_reusable_workflow(self) -> None:

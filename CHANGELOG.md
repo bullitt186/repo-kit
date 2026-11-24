@@ -7,6 +7,9 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions: [Sem
 
 ### Added
 
+- Forgejo seed `renovate.json` (7 days minimum release age, label `dependencies`).
+- PR hygiene accepts dependency updates labelled `dependencies` (Dependabot, Renovate) that only touch
+  manifests and lockfiles without a test or changelog change.
 - Kit lifecycle (ADR-0009): `kit.py update` (weekly pull into a dated update branch and pull
   request), `kit.py score` and `kit.py scorecard` (traffic light per discipline, trend), grace
   periods for new PR hygiene rules (the scope, issue-link and size rules warn until 2026-12-15).

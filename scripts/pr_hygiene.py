@@ -51,6 +51,14 @@ ENFORCE_FROM = {
 }
 LOCKFILES = ["*.lock", "**/*.lock", "**/package-lock.json", "package-lock.json", "**/go.sum", "go.sum",
              "**/pnpm-lock.yaml", "pnpm-lock.yaml", "**/Cargo.lock"]
+# Files a dependency update may touch; a pull request labelled `dependencies` (Dependabot,
+# Renovate) that changes only these needs no test or changelog change (CI proves it).
+DEPENDENCY_FILES = [
+    "**/package.json", "package.json", "**/requirements*.txt", "requirements*.txt", "**/pyproject.toml",
+    "pyproject.toml", "**/go.mod", "go.mod", "**/Cargo.toml", "Cargo.toml", "**/Dockerfile", "Dockerfile",
+    "**/*.lock", "*.lock", "**/package-lock.json", "package-lock.json", "**/pnpm-lock.yaml", "pnpm-lock.yaml",
+    "**/go.sum", "go.sum", "**/Gemfile", "Gemfile", "**/composer.json", "composer.json",
+]
 EXTERNAL = {"CONTRIBUTOR", "FIRST_TIME_CONTRIBUTOR", "FIRST_TIMER", "NONE"}
 ISSUE_REF = re.compile(r"\b(close[sd]?|fix(e[sd])?|resolve[sd]?|refs?)\s+#\d+", re.IGNORECASE)
 MD_LINK = re.compile(r"(?<!!)\[[^\]]*\]\(([^)\s]+)(?:\s+\"[^\"]*\")?\)")
@@ -183,6 +191,8 @@ def main() -> int:
 
     errors: list[str] = []
     warnings: list[str] = []
+    if "dependencies" in labels and code and all(match(p, DEPENDENCY_FILES) for p in code):
+        code = []   # dependency update: CI is the test, the bot writes the release notes
 
     def rule(name: str, message: str) -> None:
         since = ENFORCE_FROM.get(name)

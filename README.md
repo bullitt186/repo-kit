@@ -23,6 +23,7 @@ where those shared parts come from.
 | `.github/workflows/pr-hygiene.yml` | managed | calls the reusable check below |
 | `.github/workflows/security.yml` | managed | secret scan and dependency review (GitHub); secret scan and Trivy report (Forgejo, under `.forgejo/`) |
 | `.github/dependabot.yml` | seed (GitHub) | weekly updates with a 7-day cooldown |
+| `renovate.json` | seed (Forgejo) | updates through the self-hosted Renovate, 7 days minimum release age, label `dependencies` |
 | `.claude/settings.json`, `scripts/agent-stop-check.sh` | seed | stop hook that runs the fast check before an agent finishes |
 | `.github/repo-kit.yml` | seed | per-repository settings of the check |
 

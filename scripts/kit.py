@@ -128,7 +128,7 @@ def planned(repo: Path) -> dict[Path, str]:
                 continue   # existing ADRs keep their own numbering
             if not (repo / rel).exists():
                 out[repo / rel] = path.read_text(encoding="utf-8").replace("{{DATE}}", today)
-    for kind in ("seed-github",) if forge(repo) == "github" else ():
+    for kind in ("seed-github",) if forge(repo) == "github" else ("seed-forgejo",):
         for path in sorted((TEMPLATES / kind).rglob("*")):
             rel = path.relative_to(TEMPLATES / kind)
             if path.is_file() and not (repo / rel).exists():
