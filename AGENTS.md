@@ -104,7 +104,7 @@ change.
 | `templates/seed/` | files created in a repository when missing, never overwritten |
 | `scripts/kit.py` | `apply`, `check`, `github` |
 | `scripts/pr_hygiene.py` | the PR hygiene check, standard library only |
-| `.github/workflows/hygiene-reusable.yml` | reusable workflow the repositories call at `@v1` |
+| `.github/workflows/hygiene-reusable.yml` | reusable workflow the repositories call at `@stable` |
 | `tests/` | unit tests for both scripts |
 | `docs/adr/` | decisions behind the kit |
 
@@ -118,9 +118,10 @@ change.
 
 ### Rules specific to this repository
 
-- The repositories call the reusable workflow at the moving tag `v1`. A change to
-  the check that can turn a passing repository red needs a new major tag (`v2`)
-  and an ADR, not a change of `v1`.
+- The repositories call the reusable workflow and the script on the branch
+  `stable` (ADR-0005). `stable` only moves forward to a commit of `main` whose CI
+  is green, by fast-forward. A change that can turn a passing repository red
+  needs a new branch `stable-v2` and an ADR, not a change of `stable`.
 - Templates contain nothing personal or site-specific: no host names, paths,
   people or private repository names.
 - After changing a template, run `kit.py apply .` so this repository stays in

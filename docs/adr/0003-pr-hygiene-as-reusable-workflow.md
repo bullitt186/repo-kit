@@ -1,6 +1,6 @@
 # ADR-0003: PR hygiene as a reusable workflow at a major tag
 
-- **Status:** Accepted
+- **Status:** Superseded by ADR-0005
 - **Date:** 2026-11-24
 
 ## Context

@@ -13,5 +13,6 @@ numbered in order, written from `template.md`. When to write one: `AGENTS.md`.
 |---|---|---|
 | [0001](0001-record-architecture-decisions.md) | Record architecture decisions | Accepted |
 | [0002](0002-central-public-kit-with-managed-blocks.md) | Central public kit with managed blocks | Accepted |
-| [0003](0003-pr-hygiene-as-reusable-workflow.md) | PR hygiene as a reusable workflow at a major tag | Accepted |
+| [0003](0003-pr-hygiene-as-reusable-workflow.md) | PR hygiene as a reusable workflow at a major tag | Superseded by ADR-0005 |
 | [0004](0004-adrs-in-every-repository.md) | ADRs in every repository, written by agents and people alike | Accepted |
+| [0005](0005-repositories-call-the-stable-branch.md) | Repositories call the stable branch, not a moving tag | Accepted |
