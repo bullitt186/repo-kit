@@ -1,0 +1,28 @@
+# Reusable workflow: called by .github/workflows/pr-hygiene.yml in each repository.
+name: PR hygiene (reusable)
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  check:
+    name: PR hygiene
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/checkout@v4
+        with:
+          repository: bullitt186/repo-kit
+          ref: v1
+          path: .repo-kit
+      - name: Check
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+          LABELS: ${{ join(github.event.pull_request.labels.*.name, ',') }}
+        run: python3 .repo-kit/scripts/pr_hygiene.py --base "$BASE" --labels "$LABELS"
