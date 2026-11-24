@@ -392,6 +392,17 @@ def gh(*args: str, data: dict | None = None, check: bool = True) -> dict | list 
     return json.loads(r.stdout) if r.stdout.strip() else None
 
 
+def has_codeql_workflow(repo: str) -> bool:
+    """True when a workflow of the repository uses github/codeql-action (advanced setup)."""
+    import base64  # noqa: PLC0415
+    for f in gh(f"repos/{repo}/contents/.github/workflows", check=False) or []:
+        if f.get("name", "").endswith((".yml", ".yaml")):
+            content = gh(f"repos/{repo}/contents/{f['path']}", check=False) or {}
+            if "github/codeql-action" in base64.b64decode(content.get("content", "")).decode(errors="ignore"):
+                return True
+    return False
+
+
 def cmd_github(repo: str, checks: list[str], dry: bool) -> int:
     info = gh(f"repos/{repo}")
     def do(desc: str, *args: str, data: dict | None = None) -> None:
@@ -431,9 +442,11 @@ def cmd_github(repo: str, checks: list[str], dry: bool) -> int:
                                   "secret_scanning_push_protection": {"status": "enabled"}}})
     if not dry:
         gh("-X", "PUT", f"repos/{repo}/private-vulnerability-reporting", check=False)
-        if gh("-X", "PATCH", f"repos/{repo}/code-scanning/default-setup",
-              data={"state": "configured", "query_suite": "extended"}, check=False) is None:
-            print("CodeQL default setup not enabled (advanced setup present or unsupported language)")
+        if has_codeql_workflow(repo):
+            print("CodeQL default setup skipped: the repository runs its own CodeQL workflow")
+        elif gh("-X", "PATCH", f"repos/{repo}/code-scanning/default-setup",
+                data={"state": "configured", "query_suite": "extended"}, check=False) is None:
+            print("CodeQL default setup not enabled (unsupported language or API refused)")
     rulesets = {r["name"]: r["id"] for r in gh(f"repos/{repo}/rulesets") or []}
     sec = gh(f"repos/{repo}/contents/.github/workflows/security.yml", check=False)
     kit_security = bool(sec) and MANAGED_MARK in __import__("base64").b64decode(sec["content"]).decode()
