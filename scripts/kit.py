@@ -8,6 +8,9 @@
                                        worktree, push a dated update branch and open a pull request
   kit.py scorecard --out F [--previous F]  turn `update` JSON lines on stdin into a Markdown table
   kit.py github <owner/repo> [--checks "Name A,Name B"] [--dry-run]
+  kit.py forgejo <owner/repo> --api https://forge.example/api/v1 [--checks ...] [--dry-run]
+                                       labels and default-branch protection on Forgejo; token from
+                                       FORGEJO_TOKEN or the tea CLI configuration
                                        repository settings, labels, rulesets
 
 File classes (templates/):
@@ -453,6 +456,71 @@ def has_codeql_workflow(repo: str) -> bool:
     return False
 
 
+FORGEJO_CHECKS = ["PR hygiene / PR hygiene (pull_request)", "Security / Secret scan (pull_request)"]
+
+
+def forgejo_token() -> str:
+    if os.environ.get("FORGEJO_TOKEN"):
+        return os.environ["FORGEJO_TOKEN"]
+    cfg = Path.home() / ".config" / "tea" / "config.yml"
+    m = re.search(r"^\s*token:\s*(\S+)", cfg.read_text(encoding="utf-8"), re.MULTILINE) if cfg.exists() else None
+    if not m:
+        raise SystemExit("no Forgejo token: set FORGEJO_TOKEN or log in with the tea CLI")
+    return m.group(1)
+
+
+def forgejo_client(api: str, token: str):
+    """Small JSON client; raises on the first HTTP error (no retries, see the auth rules)."""
+    import urllib.request  # noqa: PLC0415
+
+    def call(method: str, path: str, data: dict | None = None):
+        req = urllib.request.Request(api.rstrip("/") + path, method=method,
+                                     data=json.dumps(data).encode() if data is not None else None,
+                                     headers={"Authorization": f"token {token}", "Content-Type": "application/json"})
+        with urllib.request.urlopen(req, timeout=30) as r:
+            body = r.read()
+        return json.loads(body) if body else None
+    return call
+
+
+def cmd_forgejo(repo: str, api: str, checks: list[str], dry: bool, call=None) -> int:
+    """Labels and default-branch protection: no force push or deletion, required checks on merge."""
+    call = call or forgejo_client(api, forgejo_token())
+    info = call("GET", f"/repos/{repo}")
+    if info.get("fork") or info.get("original_url"):
+        print("refusing: fork or mirror of someone else's project (ADR-0010)")
+        return 2
+    def do(desc: str, method: str, path: str, data: dict | None = None) -> None:
+        print(("would " if dry else "") + desc)
+        if not dry:
+            call(method, path, data)
+    existing = {lab["name"]: lab["id"] for lab in call("GET", f"/repos/{repo}/labels?limit=100") or []}
+    for name, (color, desc) in LABELS.items():
+        if name in existing:
+            do(f"update label {name}", "PATCH", f"/repos/{repo}/labels/{existing[name]}",
+               {"color": f"#{color}", "description": desc})
+        else:
+            do(f"create label {name}", "POST", f"/repos/{repo}/labels",
+               {"name": name, "color": f"#{color}", "description": desc})
+    branch = info["default_branch"]
+    contexts = list(dict.fromkeys([*checks, *FORGEJO_CHECKS]))
+    rules = {r["rule_name"]: r for r in call("GET", f"/repos/{repo}/branch_protections") or []}
+    if branch in rules:
+        have = rules[branch].get("status_check_contexts") or []
+        for old in (c for c in have if c not in contexts):
+            print(f"warning: keeping existing required check '{old}': make sure it reports on pull requests,"
+                  " a check that only runs on push blocks every merge")
+        do(f"update protection of {branch} (checks: {', '.join(dict.fromkeys([*have, *contexts]))})", "PATCH",
+           f"/repos/{repo}/branch_protections/{branch}",
+           {"enable_status_check": True, "status_check_contexts": list(dict.fromkeys([*have, *contexts]))})
+    else:
+        # Direct pushes stay possible (some CI commits to main); force pushes and deletion are blocked.
+        do(f"protect {branch} (checks: {', '.join(contexts)})", "POST", f"/repos/{repo}/branch_protections",
+           {"rule_name": branch, "enable_push": True, "enable_status_check": True,
+            "status_check_contexts": contexts, "required_approvals": 0})
+    return 0
+
+
 def cmd_github(repo: str, checks: list[str], dry: bool) -> int:
     info = gh(f"repos/{repo}")
     def do(desc: str, *args: str, data: dict | None = None) -> None:
@@ -559,18 +627,25 @@ def main() -> int:
     g.add_argument("repo", help="owner/name")
     g.add_argument("--checks", default="", help="required CI check names, comma-separated")
     g.add_argument("--dry-run", action="store_true")
+    f = sub.add_parser("forgejo")
+    f.add_argument("repo", help="owner/name")
+    f.add_argument("--api", default=os.environ.get("FORGEJO_API", ""), help="API base URL, e.g. https://forge/api/v1")
+    f.add_argument("--checks", default="", help="further required status check names, comma-separated")
+    f.add_argument("--dry-run", action="store_true")
     a = ap.parse_args()
-    if a.cmd == "apply":
-        return cmd_apply(a.repo.resolve(), a.own_product)
-    if a.cmd == "update":
-        return cmd_update(a.repo.resolve(), not a.no_push)
-    if a.cmd == "scorecard":
-        return cmd_scorecard(a.out, a.previous)
-    if a.cmd == "score":
-        return cmd_score(a.repo.resolve(), a.json)
-    if a.cmd == "check":
-        return cmd_check(a.repo.resolve())
-    return cmd_github(a.repo, [c.strip() for c in a.checks.split(",") if c.strip()], a.dry_run)
+    if a.cmd == "forgejo" and not a.api:
+        raise SystemExit("--api or FORGEJO_API is required")
+    checks = [c.strip() for c in getattr(a, "checks", "").split(",") if c.strip()]
+    commands = {
+        "forgejo": lambda: cmd_forgejo(a.repo, a.api, checks, a.dry_run),
+        "github": lambda: cmd_github(a.repo, checks, a.dry_run),
+        "apply": lambda: cmd_apply(a.repo.resolve(), a.own_product),
+        "update": lambda: cmd_update(a.repo.resolve(), not a.no_push),
+        "scorecard": lambda: cmd_scorecard(a.out, a.previous),
+        "score": lambda: cmd_score(a.repo.resolve(), a.json),
+        "check": lambda: cmd_check(a.repo.resolve()),
+    }
+    return commands[a.cmd]()
 
 
 if __name__ == "__main__":
