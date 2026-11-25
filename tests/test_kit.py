@@ -820,5 +820,24 @@ class KitTest(unittest.TestCase):
         self.assertIn("drift  AGENTS.md", res.stdout)
 
 
+    def test_check_fails_for_hook_and_push_findings(self) -> None:
+        # Every finding except "custom" blocks: check exits 1 (cmd_check, AGENTS block "fast check").
+        r = Repo()
+        self.run_kit("apply", str(r.root))
+        for rel in ("AGENTS.md", "docs/SCOPE.md", "scripts/agent-stop-check.sh"):
+            f = r.root / rel
+            f.write_text(f.read_text(encoding="utf-8").replace("TODO", "filled"), encoding="utf-8")
+        self.assertEqual(self.run_kit("check", str(r.root)).returncode, 0)   # baseline: in sync
+        r.write({".forgejo/workflows/release.yml": "steps:\n  - run: git push origin HEAD:main\n"})
+        res = self.run_kit("check", str(r.root))
+        self.assertEqual(res.returncode, 1)
+        self.assertIn("push   .forgejo/workflows/release.yml:2", res.stdout)
+        (r.root / ".forgejo/workflows/release.yml").unlink()
+        r.write({".claude/settings.json": "{}\n"})
+        res = self.run_kit("check", str(r.root))
+        self.assertEqual(res.returncode, 1)
+        self.assertIn("hook   .claude/settings.json", res.stdout)
+
+
 if __name__ == "__main__":
     unittest.main()

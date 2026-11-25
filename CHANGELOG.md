@@ -5,6 +5,15 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions: [Sem
 
 ## [Unreleased]
 
+### Changed
+
+- AGENTS block: without a mutation tool, contributors mutate by hand (break each changed branch
+  or condition, run the tests, revert) and list each mutant with its result in the pull request;
+  reasoning about mutants without running them no longer counts. Outside contributors add their
+  handle and the pull request link to their changelog entry once the pull request exists.
+  Found by an acceptance test: a fresh contributor agent followed every rule, but the SOP review
+  still found surviving mutants it had only reasoned about.
+
 ### Added
 
 - `kit.py update` opens the pull request on Forgejo too (with `FORGEJO_API` set) and sets
