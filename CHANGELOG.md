@@ -14,6 +14,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions: [Sem
 
 ### Fixed
 
+- `kit.py github` and `kit.py forgejo` create the `dependencies` label. Renovate on Forgejo drops a
+  label that does not exist, so its pull requests failed PR hygiene as code changes (#17). Run
+  `kit.py github` or `kit.py forgejo` once per repository; `kit.py score` shows `updates` yellow while the
+  label is missing (on Forgejo only with `FORGEJO_API` and a token set).
 - `kit.py update` reports a failing commit or push (for example a pre-commit hook that needs the
   repository's dev environment) as a finding for an agent instead of crashing; hooks are never bypassed.
 - `kit.py score` treats an older pinned kit commit as in sync, like `check`.

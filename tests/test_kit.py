@@ -35,6 +35,7 @@ e
 # kit.py resolves the stable commit from GitHub; tests stay offline with a fixed one (ADR-0011).
 PINNED = "1" * 40
 os.environ["REPO_KIT_SHA"] = PINNED
+os.environ.pop("FORGEJO_API", None)   # no forge requests from tests
 INDEX = "| [0001](0001-record-architecture-decisions.md) | Record | Accepted |\n"
 
 
@@ -308,6 +309,7 @@ class ForgejoConfigTest(unittest.TestCase):
         self.assertIn(("PATCH", "/repos/o/r/labels/7"), [(m, p) for m, p, _ in calls])
         created = {d["name"] for m, p, d in calls if m == "POST" and p == "/repos/o/r/labels"}
         self.assertIn("accepted", created)
+        self.assertIn("dependencies", created)   # the Renovate seed's label (#17)
         self.assertNotIn("bug", created)
         post = next(d for m, p, d in calls if m == "POST" and p == "/repos/o/r/branch_protections")
         self.assertEqual(post["rule_name"], "main")
@@ -337,6 +339,72 @@ class ForgejoConfigTest(unittest.TestCase):
         self.assertEqual({m for m, _, _ in calls}, {"GET"})
         call, calls = self.fake([], fork=True)
         self.assertEqual(kit.cmd_forgejo("o/r", "api", [], False, call=call), 2)
+
+
+class DependenciesLabelTest(unittest.TestCase):
+    """The label the dependency seeds set and PR hygiene accepts must exist on the forge (#17)."""
+
+    def setUp(self) -> None:
+        sys.path.insert(0, str(KIT / "scripts"))
+        import kit  # noqa: PLC0415
+        self.kit = kit
+        self.saved = (kit.gh, kit.forgejo_client)
+        self.addCleanup(self.restore)
+
+    def restore(self) -> None:
+        self.kit.gh, self.kit.forgejo_client = self.saved
+        os.environ.pop("FORGEJO_API", None)
+        os.environ.pop("FORGEJO_TOKEN", None)
+
+    def repo(self, origin: str) -> Repo:
+        r = Repo({"renovate.json": "{}\n"})
+        git(r.root, "remote", "add", "origin", origin)
+        return r
+
+    def test_github_setup_creates_the_label(self) -> None:
+        self.kit.gh = lambda path, *a, **_: {"private": True} if path == "repos/o/r" else []
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            self.kit.cmd_github("o/r", [], True)
+        self.assertIn("would create label dependencies", out.getvalue())
+
+    def test_score_reports_missing_label_on_github(self) -> None:
+        r = self.repo("https://github.com/o/r.git")
+        self.kit.gh = lambda path, **_: [{"name": "bug"}] if path == "repos/o/r/labels?per_page=100" else None
+        self.assertEqual(self.kit.score(r.root)["updates"][0], "yellow")
+        self.assertIn("dependencies", self.kit.score(r.root)["updates"][1])
+        self.kit.gh = lambda path, **_: [{"name": "dependencies"}]
+        self.assertEqual(self.kit.score(r.root)["updates"], ("green", ""))
+        self.kit.gh = lambda path, **_: None     # not readable (offline, no auth): no verdict
+        self.assertEqual(self.kit.score(r.root)["updates"], ("green", ""))
+
+    def test_score_reports_missing_label_on_forgejo(self) -> None:
+        import urllib.error  # noqa: PLC0415
+        r = self.repo("ssh://git@forge.example.invalid:2222/o/r.git")
+        self.assertEqual(self.kit.score(r.root)["updates"], ("green", ""))   # no FORGEJO_API: not asked
+        os.environ["FORGEJO_API"] = "https://forge.example.invalid/api/v1"
+        os.environ["FORGEJO_TOKEN"] = "t"
+        calls = []
+        labels: list = []
+        def client(api, token):
+            def call(method, path, data=None):
+                calls.append((method, path))
+                if isinstance(labels, Exception):
+                    raise labels
+                return labels
+            return call
+        self.kit.forgejo_client = client
+        self.assertEqual(self.kit.score(r.root)["updates"][0], "yellow")
+        self.assertEqual(calls, [("GET", "/repos/o/r/labels?limit=100")])
+        labels = [{"name": "dependencies"}]
+        self.assertEqual(self.kit.score(r.root)["updates"], ("green", ""))
+        labels = urllib.error.HTTPError("u", 401, "Unauthorized", {}, None)
+        with self.assertRaises(SystemExit):
+            self.kit.score(r.root)
+        calls.clear()
+        labels = urllib.error.URLError("offline")
+        self.assertEqual(self.kit.score(r.root)["updates"], ("green", ""))
+        self.assertEqual(len(calls), 1)   # one request, no retry
 
 
 class UpdateTest(unittest.TestCase):
