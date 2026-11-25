@@ -86,8 +86,8 @@ README, `docs/`, configuration examples, the ADRs and `CHANGELOG.md`. Outdated
 documentation counts as a bug. Relative links in Markdown must point to files
 that exist.
 
-Changelog entries go under `[Unreleased]`, in the Keep a Changelog sections
-(Added, Changed, Fixed, Removed, Security). Write them for the user of the
+Changelog entries go under `[Unreleased]`, in the Keep a Changelog sections in
+this order: Added, Changed, Deprecated, Removed, Fixed, Security. Write them for the user of the
 project: what changes for them and what they have to do, not which functions
 moved. A breaking change gets an entry under "Upgrade notes" with the steps.
 Name outside contributors and link their issue or pull request: write the issue

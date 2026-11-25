@@ -19,6 +19,9 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions: [Sem
 
 ### Added
 
+- PR hygiene checks the order of the Keep a Changelog sections under `[Unreleased]` (Added,
+  Changed, Deprecated, Removed, Fixed, Security; each once). It warns until 2026-12-15 and blocks
+  from then on. The AGENTS block now states this order; it had listed Fixed before Removed.
 - `kit.py update` opens the pull request on Forgejo too (with `FORGEJO_API` set) and sets
   "merge when checks succeed" when there are no findings.
 - `kit.py forgejo`: labels and default-branch protection on Forgejo (required checks PR hygiene and
