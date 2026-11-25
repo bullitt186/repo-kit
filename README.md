@@ -45,7 +45,11 @@ every pull request:
 6. code from outside contributors references an issue (`Closes #N`),
 7. at most 800 changed lines of code and tests (waiver label `large-change`).
 
-Waiver labels can only be set by the maintainer. Run it locally before you push:
+Waiver labels can only be set by the maintainer. A release pull request
+([release standard](docs/RELEASING.md)) needs none: when it only bumps the version of
+`pyproject.toml` or `package.json` (and the project's entry in `package-lock.json` or `uv.lock`)
+and moves `[Unreleased]` under a new version heading, it is not a code change. Run it locally
+before you push:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/bullitt186/repo-kit/stable-v2/scripts/pr_hygiene.py \

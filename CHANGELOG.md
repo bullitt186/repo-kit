@@ -14,6 +14,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions: [Sem
 
 ### Fixed
 
+- PR hygiene accepts release pull requests without waiver labels (#19). It recognises them by the
+  diff: only the version of `pyproject.toml` (`[project]` or `[tool.poetry]`) or `package.json`
+  changed, plus the project's own entry in `package-lock.json` or `uv.lock`, and `CHANGELOG.md`
+  only gained a version heading that takes over the `[Unreleased]` content (compare links at the
+  bottom may change). Anything else in the same pull request, such as a new dependency or changelog
+  text, keeps the normal rules. Python release pull requests need Python 3.11 or later for the check.
 - PR hygiene treats example files (`*.example`, `*.example.*`) as documentation. Scanner ignore
   files (`.gitleaksignore`, `.trivyignore`) stay subject to the rules: an ignore entry needs the
   maintainer's waiver label (maintainer decision 2026-11-25).

@@ -201,6 +201,133 @@ class DependencyUpdateTest(unittest.TestCase):
         self.assertEqual(r.hygiene("dependencies").returncode, 1)
 
 
+CHANGELOG_BEFORE = """# Changelog
+
+## [Unreleased]
+
+### Fixed
+
+- A fix.
+
+## [1.2.0] - 2026-11-01
+
+- Older.
+
+[Unreleased]: https://example.invalid/compare/v1.2.0...HEAD
+[1.2.0]: https://example.invalid/releases/tag/v1.2.0
+"""
+# Release pull request per docs/RELEASING.md: [Unreleased] content moves under a new version heading.
+CHANGELOG_RELEASED = """# Changelog
+
+## [Unreleased]
+
+## [1.3.0] - 2026-11-25
+
+### Fixed
+
+- A fix.
+
+## [1.2.0] - 2026-11-01
+
+- Older.
+
+[Unreleased]: https://example.invalid/compare/v1.3.0...HEAD
+[1.3.0]: https://example.invalid/compare/v1.2.0...v1.3.0
+[1.2.0]: https://example.invalid/releases/tag/v1.2.0
+"""
+PYPROJECT = '[project]\nname = "app"\nversion = "{v}"\ndependencies = [{deps}]\n'
+PACKAGE = '{{\n  "name": "app",\n  "version": "{v}",\n  "dependencies": {{}}\n}}\n'
+PACKAGE_LOCK = ('{{\n  "name": "app",\n  "version": "{v}",\n  "lockfileVersion": 3,\n  "packages": {{\n'
+                '    "": {{"name": "app", "version": "{v}"}},\n'
+                '    "node_modules/x": {{"version": "{dep}"}}\n  }}\n}}\n')
+UV_LOCK = ('version = 1\n\n[[package]]\nname = "app"\nversion = "{v}"\nsource = {{ editable = "." }}\n\n'
+           '[[package]]\nname = "x"\nversion = "{dep}"\nsource = {{ registry = "https://example.invalid" }}\n')
+
+
+class ReleasePullRequestTest(unittest.TestCase):
+    """A release pull request (docs/RELEASING.md) passes without waivers (#19)."""
+
+    def python(self) -> Repo:
+        return Repo({"CHANGELOG.md": CHANGELOG_BEFORE, "pyproject.toml": PYPROJECT.format(v="1.2.0", deps=""),
+                     "uv.lock": UV_LOCK.format(v="1.2.0", dep="1.0")})
+
+    def node(self) -> Repo:
+        return Repo({"CHANGELOG.md": CHANGELOG_BEFORE, "package.json": PACKAGE.format(v="1.2.0"),
+                     "package-lock.json": PACKAGE_LOCK.format(v="1.2.0", dep="1.0")})
+
+    def test_python_release_passes_without_labels(self) -> None:
+        r = self.python()
+        r.commit({"CHANGELOG.md": CHANGELOG_RELEASED, "pyproject.toml": PYPROJECT.format(v="1.3.0", deps=""),
+                  "uv.lock": UV_LOCK.format(v="1.3.0", dep="1.0")})
+        res = r.hygiene()
+        self.assertEqual(res.returncode, 0, res.stdout)
+        self.assertIn("release pull request", res.stdout)
+
+    def test_node_release_passes_without_labels(self) -> None:
+        r = self.node()
+        r.commit({"CHANGELOG.md": CHANGELOG_RELEASED, "package.json": PACKAGE.format(v="1.3.0"),
+                  "package-lock.json": PACKAGE_LOCK.format(v="1.3.0", dep="1.0")})
+        self.assertEqual(r.hygiene().returncode, 0, r.hygiene().stdout)
+
+    def test_poetry_version_counts(self) -> None:
+        poetry = '[tool.poetry]\nname = "app"\nversion = "{v}"\n'
+        r = Repo({"CHANGELOG.md": CHANGELOG_BEFORE, "pyproject.toml": poetry.format(v="1.2.0")})
+        r.commit({"CHANGELOG.md": CHANGELOG_RELEASED, "pyproject.toml": poetry.format(v="1.3.0")})
+        self.assertEqual(r.hygiene().returncode, 0, r.hygiene().stdout)
+
+    def test_release_with_code_change_fails(self) -> None:
+        r = self.python()
+        r.commit({"CHANGELOG.md": CHANGELOG_RELEASED, "pyproject.toml": PYPROJECT.format(v="1.3.0", deps=""),
+                  "src/app.py": "x = 2\n"})
+        res = r.hygiene()
+        self.assertEqual(res.returncode, 1)
+        self.assertIn("code changed without a test change", res.stdout)
+
+    def test_bump_with_other_manifest_change_is_no_release(self) -> None:
+        r = self.python()
+        r.commit({"CHANGELOG.md": CHANGELOG_RELEASED, "pyproject.toml": PYPROJECT.format(v="1.3.0", deps='"x"')})
+        self.assertEqual(r.hygiene().returncode, 1)
+        r = self.node()
+        r.commit({"CHANGELOG.md": CHANGELOG_RELEASED, "package.json": PACKAGE.format(v="1.3.0"),
+                  "package-lock.json": PACKAGE_LOCK.format(v="1.3.0", dep="2.0")})
+        self.assertEqual(r.hygiene().returncode, 1)
+        r = self.python()
+        r.commit({"CHANGELOG.md": CHANGELOG_RELEASED, "pyproject.toml": PYPROJECT.format(v="1.3.0", deps=""),
+                  "uv.lock": UV_LOCK.format(v="1.3.0", dep="2.0")})
+        self.assertEqual(r.hygiene().returncode, 1)
+
+    def test_changelog_with_new_entry_text_is_no_release(self) -> None:
+        r = self.python()
+        added = CHANGELOG_RELEASED.replace("- A fix.\n", "- A fix.\n- Sneaked in.\n")
+        r.commit({"CHANGELOG.md": added, "pyproject.toml": PYPROJECT.format(v="1.3.0", deps="")})
+        self.assertIn("code changed without a test change", r.hygiene().stdout)
+        r = self.python()
+        removed = CHANGELOG_RELEASED.replace("- Older.\n", "")
+        r.commit({"CHANGELOG.md": removed, "pyproject.toml": PYPROJECT.format(v="1.3.0", deps="")})
+        self.assertEqual(r.hygiene().returncode, 1)
+        r = self.python()
+        two = CHANGELOG_RELEASED.replace("## [1.3.0]", "## [1.4.0] - 2026-11-25\n\n## [1.3.0]")
+        r.commit({"CHANGELOG.md": two, "pyproject.toml": PYPROJECT.format(v="1.3.0", deps="")})
+        self.assertEqual(r.hygiene().returncode, 1)
+
+    def test_version_heading_must_take_over_unreleased(self) -> None:
+        r = self.python()
+        # the new heading sits below the [Unreleased] content instead of taking it over
+        wrong = CHANGELOG_BEFORE.replace("## [1.2.0]", "## [1.3.0] - 2026-11-25\n\n## [1.2.0]")
+        r.commit({"CHANGELOG.md": wrong, "pyproject.toml": PYPROJECT.format(v="1.3.0", deps="")})
+        self.assertEqual(r.hygiene().returncode, 1)
+
+    def test_manifest_without_version_change_is_no_release(self) -> None:
+        r = self.node()
+        r.commit({"CHANGELOG.md": CHANGELOG_RELEASED, "package.json": PACKAGE.format(v="1.2.0").replace("  ", "    ")})
+        self.assertEqual(r.hygiene().returncode, 1)
+
+    def test_bump_without_changelog_section_is_no_release(self) -> None:
+        r = self.python()
+        r.commit({"pyproject.toml": PYPROJECT.format(v="1.3.0", deps="")})
+        self.assertEqual(r.hygiene().returncode, 1)
+
+
 class ScopeRulesTest(unittest.TestCase):
     def test_scope_change_needs_adr(self) -> None:
         r = Repo({"docs/SCOPE.md": "# Scope\n", "docs/adr/README.md": INDEX,

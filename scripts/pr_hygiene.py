@@ -9,6 +9,8 @@ Checks a change set against its base:
   5. a change of docs/SCOPE.md comes with an ADR                        (ADR-0007)
   6. code from outside contributors references an issue (Closes #N)
   7. at most max_lines changed lines            (waiver label: large-change)
+A release pull request (docs/RELEASING.md) is not a code change: it only bumps the version of
+the manifests (and their lockfile's root entry) and moves [Unreleased] under a version heading.
 
 Usage (local):  python3 pr_hygiene.py --base origin/main
 Usage (CI):     python3 pr_hygiene.py --base <sha> --labels "a,b"
@@ -25,11 +27,18 @@ from __future__ import annotations
 
 import argparse
 import datetime as dt
+import difflib
 import fnmatch
+import json
 import re
 import subprocess
 import sys
 from pathlib import Path
+
+try:
+    import tomllib
+except ImportError:   # Python 3.10: no TOML parser, so no Python release is recognised (normal rules apply)
+    tomllib = None
 
 DEFAULT_TEST = [
     "tests/**", "test/**", "**/tests/**", "**/test/**", "**/__tests__/**",
@@ -60,6 +69,8 @@ DEPENDENCY_FILES = [
     "**/*.lock", "*.lock", "**/package-lock.json", "package-lock.json", "**/pnpm-lock.yaml", "pnpm-lock.yaml",
     "**/go.sum", "go.sum", "**/Gemfile", "Gemfile", "**/composer.json", "composer.json",
 ]
+VERSION_HEADING = re.compile(r"^## \[?v?\d+\.\d+[^\]\s]*\]?(\s.*)?$")
+LINK_REFERENCE = re.compile(r"^\[[^\]]+\]:\s*\S+$")   # Keep a Changelog compare links at the bottom
 EXTERNAL = {"CONTRIBUTOR", "FIRST_TIME_CONTRIBUTOR", "FIRST_TIMER", "NONE"}
 ISSUE_REF = re.compile(r"\b(close[sd]?|fix(e[sd])?|resolve[sd]?|refs?)\s+#\d+", re.IGNORECASE)
 MD_LINK = re.compile(r"(?<!!)\[[^\]]*\]\(([^)\s]+)(?:\s+\"[^\"]*\")?\)")
@@ -106,6 +117,85 @@ def changed_lines(base: str, root: Path) -> dict[str, int]:
         added, removed, path = row.split("\t", 2)
         lines[path] = (int(added) if added.isdigit() else 0) + (int(removed) if removed.isdigit() else 0)
     return lines
+
+
+def show(rev: str, path: str, root: Path) -> str | None:
+    res = subprocess.run(["git", "show", f"{rev}:{path}"], cwd=root, capture_output=True, text=True, check=False)
+    return res.stdout if res.returncode == 0 else None
+
+
+def load(path: str, text: str) -> dict | None:
+    """A supported manifest or lockfile, parsed; None if unsupported or unreadable."""
+    name = Path(path).name
+    try:
+        if name in ("package.json", "package-lock.json"):
+            data = json.loads(text)
+        elif name in ("pyproject.toml", "uv.lock") and tomllib is not None:
+            data = tomllib.loads(text)
+        else:
+            return None
+    except ValueError:
+        return None
+    return data if isinstance(data, dict) else None
+
+
+def without_version(path: str, text: str) -> dict | None:
+    """The manifest or lockfile without the project's own version fields."""
+    data = load(path, text)
+    if data is None:
+        return None
+    try:
+        data.pop("version", None)                                     # package.json, package-lock.json
+        data.get("packages", {}).get("", {}).pop("version", None)     # package-lock.json root entry
+        data.get("project", {}).pop("version", None)                  # pyproject.toml (PEP 621)
+        data.get("tool", {}).get("poetry", {}).pop("version", None)   # pyproject.toml (Poetry)
+        for pkg in data.get("package", []) if Path(path).name == "uv.lock" else []:
+            source = pkg.get("source", {})
+            if source.get("editable") == "." or source.get("virtual") == ".":   # the project itself
+                pkg.pop("version", None)
+    except AttributeError:   # unexpected structure: not a release
+        return None
+    return data
+
+
+def is_release_changelog(old: str, new: str) -> bool:
+    """New only adds one version heading that takes over the [Unreleased] content."""
+    a = [line for line in old.splitlines() if line.strip()]
+    b = [line for line in new.splitlines() if line.strip()]
+    headings = []
+    for op, i1, i2, j1, j2 in difflib.SequenceMatcher(None, a, b, autojunk=False).get_opcodes():
+        if op == "equal":
+            continue
+        if not all(LINK_REFERENCE.match(line) for line in a[i1:i2]):
+            return False
+        for j in range(j1, j2):
+            if VERSION_HEADING.match(b[j]):
+                headings.append(j)
+            elif not LINK_REFERENCE.match(b[j]):
+                return False
+    return len(headings) == 1 and headings[0] > 0 and b[headings[0] - 1].startswith("## [Unreleased]")
+
+
+def is_release(base: str, root: Path, code: list[str], changelog: str) -> bool:
+    """Only version fields of manifests changed, and the changelog only gained a version heading."""
+    if not code:
+        return False
+    rev = subprocess.run(["git", "merge-base", base, "HEAD"], cwd=root, capture_output=True, text=True,
+                         check=True).stdout.strip()
+    bumped = False
+    for path in code:
+        old, new = show(rev, path, root), show("HEAD", path, root)
+        if old is None or new is None:
+            return False
+        before, after = without_version(path, old), without_version(path, new)
+        if before is None or before != after:
+            return False
+        bumped = bumped or load(path, old) != load(path, new)
+    if changelog != "none":
+        old, new = show(rev, changelog, root), show("HEAD", changelog, root)
+        if old is None or new is None or not is_release_changelog(old, new):
+            return False
+    return bumped
 
 
 def check_adrs(root: Path) -> list[str]:
@@ -194,6 +284,9 @@ def main() -> int:
     warnings: list[str] = []
     if "dependencies" in labels and code and all(match(p, DEPENDENCY_FILES) for p in code):
         code = []   # dependency update: CI is the test, the bot writes the release notes
+    if is_release(args.base, root, code, changelog):
+        print("PR hygiene: release pull request (version bump and changelog section only)")
+        code = []   # docs/RELEASING.md: the release is tested by the full check on the exact commit
 
     def rule(name: str, message: str) -> None:
         since = ENFORCE_FROM.get(name)
