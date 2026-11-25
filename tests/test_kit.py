@@ -324,6 +324,12 @@ class ForgejoConfigTest(unittest.TestCase):
         patch = next(d for m, p, d in calls if m == "PATCH" and p == "/repos/o/r/branch_protections/main")
         self.assertEqual(patch["status_check_contexts"], ["Old / x (pull_request)", *kit.FORGEJO_CHECKS])
 
+    def test_forgejo_slug(self) -> None:
+        kit = self.kit()
+        self.assertEqual(kit.forgejo_slug("ssh://git@forge.example.invalid:2222/o/r.git"), "o/r")
+        self.assertEqual(kit.forgejo_slug("https://forge.example.invalid/o/r.git"), "o/r")
+        self.assertEqual(kit.forgejo_slug("git@forge.example.invalid:o/r.git"), "o/r")
+
     def test_dry_run_writes_nothing_and_forks_are_refused(self) -> None:
         kit = self.kit()
         call, calls = self.fake([])

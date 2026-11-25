@@ -359,17 +359,27 @@ def cmd_update(repo: Path, push: bool) -> int:
         if push:
             git_out(wt, "push", "-q", "-u", "origin", branch)
             result["branch"] = branch
+            body = ("Files refreshed by `kit.py update` (repo-kit v" + VERSION + ").\n\n"
+                    + ("Findings that need a person or agent:\n" + "\n".join(f"- {f}" for f in todo)
+                       if todo else "No findings; merges when CI is green."))
+            title = f"chore: repo-kit update (v{VERSION})"
             if result["forge"] == "github":
-                body = ("Files refreshed by `kit.py update` (repo-kit v" + VERSION + ").\n\n"
-                        + ("Findings that need a person or agent:\n" + "\n".join(f"- {f}" for f in todo)
-                           if todo else "No findings; merges when CI is green."))
                 url = subprocess.run(["gh", "pr", "create", "--base", default, "--head", branch, "--title",
-                                      f"chore: repo-kit update (v{VERSION})", "--body", body],
+                                      title, "--body", body],
                                      cwd=wt, capture_output=True, text=True, check=False).stdout.strip()
                 result["pr"] = url
                 if url and not todo:
                     subprocess.run(["gh", "pr", "merge", url, "--auto", "--squash"], cwd=wt,
                                    capture_output=True, text=True, check=False)
+            elif os.environ.get("FORGEJO_API"):
+                slug = forgejo_slug(git_out(repo, "remote", "get-url", "origin"))
+                call = forgejo_client(os.environ["FORGEJO_API"], forgejo_token())
+                pr = call("POST", f"/repos/{slug}/pulls", {"base": default, "head": branch, "title": title,
+                                                           "body": body})
+                result["pr"] = pr.get("html_url")
+                if not todo:
+                    call("POST", f"/repos/{slug}/pulls/{pr['number']}/merge",
+                         {"Do": "squash", "merge_when_checks_succeed": True})
         return 0
     finally:
         print(json.dumps(result))
@@ -457,6 +467,11 @@ def has_codeql_workflow(repo: str) -> bool:
 
 
 FORGEJO_CHECKS = ["PR hygiene / PR hygiene (pull_request)", "Security / Secret scan (pull_request)"]
+
+
+def forgejo_slug(url: str) -> str:
+    """owner/name from a Forgejo clone URL (ssh or https)."""
+    return "/".join(url.strip().removesuffix(".git").rstrip("/").replace(":", "/").split("/")[-2:])
 
 
 def forgejo_token() -> str:
