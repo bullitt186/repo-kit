@@ -19,6 +19,10 @@ Decision: [ADR-0008](adr/0008-release-standard.md).
 1. **Scope.** List what goes in from the merged changes and what stays out.
 2. **Check** the exact commit: full local check and green CI. Earlier results do not count.
 3. **Release pull request:** version bump and changelog section, written for users.
+   PR hygiene passes it without waiver labels when the manifests change nothing but their version
+   and `CHANGELOG.md` only gains the version heading above the moved `[Unreleased]` content.
+   Polish the entries in normal pull requests beforehand; rewording them in the release pull
+   request makes it a normal change that needs the maintainer's waiver labels.
 4. **Stop: acceptance.** The maintainer accepts the release, usually after the change ran on a
    real installation. Nothing is tagged before that.
 5. **Tag** the merge commit of the release pull request after `git fetch`, never a local branch
