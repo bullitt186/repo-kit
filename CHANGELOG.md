@@ -13,6 +13,9 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions: [Sem
   handle and the pull request link to their changelog entry once the pull request exists.
   Found by an acceptance test: a fresh contributor agent followed every rule, but the SOP review
   still found surviving mutants it had only reasoned about.
+- AGENTS block: mutation testing covers every line a change touches, including edited callers,
+  not only new functions; on Forgejo the changelog references issues as bare `#N` (a link would
+  leak the forge's host name). Found by a second acceptance test.
 
 ### Added
 
