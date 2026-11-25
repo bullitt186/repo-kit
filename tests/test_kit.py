@@ -375,6 +375,20 @@ class UpdateTest(unittest.TestCase):
         self.assertIn("repo-kit:begin v", git(self.r.root, "show", f"{branch[0]}:AGENTS.md"))
         self.assertEqual(git(self.r.root, "status", "--porcelain"), "")   # the checkout itself is untouched
 
+    def test_failing_commit_hook_is_reported_not_crashing(self) -> None:
+        self.r.write({"AGENTS.md": "# A\n\n<!-- repo-kit:begin v1 -->\nold\n<!-- repo-kit:end -->\n"})
+        git(self.r.root, "add", "-A")
+        git(self.r.root, "commit", "-qm", "kit v1")
+        git(self.r.root, "push", "-q", "origin", "main")
+        hook = self.r.root / ".git" / "hooks" / "pre-commit"
+        hook.write_text("#!/bin/sh\necho 'needs the dev container' >&2\nexit 1\n", encoding="utf-8")
+        hook.chmod(0o755)
+        out = self.update()
+        self.assertTrue(out["status"].startswith("failed: commit"), out)
+        self.assertIn("needs the dev container", out["status"])
+        self.assertIn("finding(s) for an agent", out["status"])
+        self.assertFalse((self.r.root / ".claude/worktrees/kit-update").exists())
+
     def test_scorecard_table_and_drop(self) -> None:
         tmp = Path(tempfile.mkdtemp())
         prev = tmp / "prev.md"

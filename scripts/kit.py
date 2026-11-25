@@ -253,7 +253,7 @@ def score(repo: Path) -> dict[str, tuple[str, str]]:
         return f.read_text(encoding="utf-8") if f.exists() else ""
 
     out: dict[str, tuple[str, str]] = {}
-    drift = {str(p.relative_to(repo)) for p in planned(repo)}
+    drift = {str(p.relative_to(repo)) for p in planned(repo, refresh_pins=False)}
     agents = text("AGENTS.md")
     if "repo-kit:begin" not in agents:
         out["instructions"] = ("red", "no repo-kit block")
@@ -380,6 +380,13 @@ def cmd_update(repo: Path, push: bool) -> int:
                 if not todo:
                     call("POST", f"/repos/{slug}/pulls/{pr['number']}/merge",
                          {"Do": "squash", "merge_when_checks_succeed": True})
+        return 0
+    except subprocess.CalledProcessError as err:
+        # e.g. a pre-commit hook that needs the repository's dev environment: never bypass it,
+        # report it so the weekly run hands the repository to an agent.
+        step = " ".join(err.cmd[1:3]) if isinstance(err.cmd, list) else str(err.cmd)
+        detail = ((err.stderr or "") + (err.stdout or "")).strip().splitlines()[-3:]
+        result["status"] = f"failed: {step}: " + " | ".join(detail)[:300] + " (finding(s) for an agent)"
         return 0
     finally:
         print(json.dumps(result))

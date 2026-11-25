@@ -14,6 +14,9 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions: [Sem
 
 ### Fixed
 
+- `kit.py update` reports a failing commit or push (for example a pre-commit hook that needs the
+  repository's dev environment) as a finding for an agent instead of crashing; hooks are never bypassed.
+- `kit.py score` treats an older pinned kit commit as in sync, like `check`.
 - Managed caller workflows pin repo-kit's reusable workflows to the commit of `stable-v2`
   (`@<sha> # stable-v2`) instead of the branch, which CodeQL reported as `actions/unpinned-tag`
   in every repository (#12, ADR-0011). `kit.py apply` and the weekly `kit.py update` move the pin;
