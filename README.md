@@ -69,6 +69,7 @@ Settings (`.github/repo-kit.yml`): `test_paths` (globs, replace the defaults),
 python3 scripts/kit.py apply  ../some-repo     # add missing files, refresh shared blocks
 python3 scripts/kit.py check  ../some-repo     # drift, unfilled TODOs, missing stop hook -> exit 1
 python3 scripts/kit.py github owner/some-repo --checks "Tests,Lint"   # settings, labels, rulesets
+python3 scripts/kit.py forgejo owner/some-repo --api https://forge.example/api/v1   # labels, protection
 python3 scripts/kit.py score  ../some-repo     # traffic light per discipline of the standard
 python3 scripts/kit.py update ../some-repo     # weekly pull: dated update branch and pull request
 ```

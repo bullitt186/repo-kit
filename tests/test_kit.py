@@ -1,6 +1,8 @@
 """Tests for scripts/pr_hygiene.py and scripts/kit.py. Run: python3 -m unittest discover tests"""
 from __future__ import annotations
 
+import contextlib
+import io
 import json
 import os
 import subprocess
@@ -278,6 +280,57 @@ class CodeqlDetectionTest(unittest.TestCase):
             self.assertFalse(kit.has_codeql_workflow("o/r"))
         finally:
             kit.gh = original
+
+
+class ForgejoConfigTest(unittest.TestCase):
+    def fake(self, protections: list, fork: bool = False):
+        calls = []
+        def call(method, path, data=None):
+            calls.append((method, path, data))
+            if method == "GET" and path == "/repos/o/r":
+                return {"default_branch": "main", "fork": fork, "original_url": ""}
+            if method == "GET" and path.startswith("/repos/o/r/labels"):
+                return [{"name": "bug", "id": 7}]
+            if method == "GET" and path == "/repos/o/r/branch_protections":
+                return protections
+            return None
+        return call, calls
+
+    def kit(self):
+        sys.path.insert(0, str(KIT / "scripts"))
+        import kit  # noqa: PLC0415
+        return kit
+
+    def test_labels_and_new_protection(self) -> None:
+        kit = self.kit()
+        call, calls = self.fake([])
+        self.assertEqual(kit.cmd_forgejo("o/r", "api", ["ci / test (pull_request)"], False, call=call), 0)
+        self.assertIn(("PATCH", "/repos/o/r/labels/7"), [(m, p) for m, p, _ in calls])
+        created = {d["name"] for m, p, d in calls if m == "POST" and p == "/repos/o/r/labels"}
+        self.assertIn("accepted", created)
+        self.assertNotIn("bug", created)
+        post = next(d for m, p, d in calls if m == "POST" and p == "/repos/o/r/branch_protections")
+        self.assertEqual(post["rule_name"], "main")
+        self.assertTrue(post["enable_push"])
+        self.assertEqual(post["status_check_contexts"], ["ci / test (pull_request)", *kit.FORGEJO_CHECKS])
+
+    def test_existing_protection_keeps_its_checks(self) -> None:
+        kit = self.kit()
+        call, calls = self.fake([{"rule_name": "main", "status_check_contexts": ["Old / x (pull_request)"]}])
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            kit.cmd_forgejo("o/r", "api", [], False, call=call)
+        self.assertIn("warning: keeping existing required check 'Old / x (pull_request)'", out.getvalue())
+        patch = next(d for m, p, d in calls if m == "PATCH" and p == "/repos/o/r/branch_protections/main")
+        self.assertEqual(patch["status_check_contexts"], ["Old / x (pull_request)", *kit.FORGEJO_CHECKS])
+
+    def test_dry_run_writes_nothing_and_forks_are_refused(self) -> None:
+        kit = self.kit()
+        call, calls = self.fake([])
+        kit.cmd_forgejo("o/r", "api", [], True, call=call)
+        self.assertEqual({m for m, _, _ in calls}, {"GET"})
+        call, calls = self.fake([], fork=True)
+        self.assertEqual(kit.cmd_forgejo("o/r", "api", [], False, call=call), 2)
 
 
 class UpdateTest(unittest.TestCase):
