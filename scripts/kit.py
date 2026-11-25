@@ -15,13 +15,18 @@ File classes (templates/):
                        refreshed on every apply; text outside the markers is the repo's own
   managed/<path>       whole file owned by the kit, overwritten on apply
   seed/<path>          created when missing, never overwritten
+Managed workflows call repo-kit's reusable workflows at the commit of `stable-vN`
+(`@<sha> # stable-vN`, ADR-0011); `{{KIT_SHA}}` in a template is that commit, resolved from
+GitHub (or $REPO_KIT_SHA). `apply` and `update` move the pin, `check` accepts any pinned commit.
 Standard library only; `github` needs an authenticated `gh` CLI.
 """
 from __future__ import annotations
 
 import argparse
 import datetime as dt
+import functools
 import json
+import os
 import re
 import subprocess
 import sys
@@ -92,6 +97,42 @@ def kit_owned(path: Path) -> bool:
     return MANAGED_MARK in text or any(text.startswith(m) for m in V1_MARKS)
 
 
+KIT_URL = "https://github.com/bullitt186/repo-kit.git"
+STABLE = f"stable-v{VERSION}"
+KIT_SHA = "{{KIT_SHA}}"
+SHA = re.compile(r"^[0-9a-f]{40}$")
+# A pinned call of a reusable workflow as the managed templates write it (ADR-0011).
+PIN = re.compile(r"@[0-9a-f]{40}( # " + re.escape(STABLE) + r")$", re.MULTILINE)
+
+
+@functools.lru_cache(maxsize=1)
+def stable_sha() -> str:
+    """Commit of the stable branch the managed workflows pin: $REPO_KIT_SHA, GitHub, else the local ref."""
+    env = os.environ.get("REPO_KIT_SHA", "").strip()
+    if env:
+        if not SHA.match(env):
+            sys.exit(f"REPO_KIT_SHA must be a full 40-character commit SHA, got {env!r}")
+        return env
+    try:
+        r = subprocess.run(["git", "ls-remote", KIT_URL, f"refs/heads/{STABLE}"],
+                           capture_output=True, text=True, check=False, timeout=30)
+        sha = r.stdout.split()[0] if r.returncode == 0 and r.stdout.strip() else ""
+    except subprocess.TimeoutExpired:
+        sha = ""
+    if not SHA.match(sha):
+        r = subprocess.run(["git", "rev-parse", "--verify", "-q", f"refs/remotes/origin/{STABLE}^{{commit}}"],
+                           cwd=KIT, capture_output=True, text=True, check=False)
+        sha = r.stdout.strip()
+    if not SHA.match(sha):
+        sys.exit(f"cannot resolve the commit of {STABLE} (no network?); set REPO_KIT_SHA to it")
+    return sha
+
+
+def unpinned(text: str) -> str:
+    """Text with every pinned repo-kit commit replaced by the template placeholder."""
+    return PIN.sub(lambda m: f"@{KIT_SHA}{m.group(1)}", text)
+
+
 def managed_files(repo: Path) -> dict[Path, str]:
     """Whole files the kit owns for this repository's forge."""
     managed = TEMPLATES / ("managed-forgejo" if forge(repo) == "forgejo" else "managed")
@@ -116,8 +157,11 @@ def findings(repo: Path) -> list[str]:
     return out
 
 
-def planned(repo: Path) -> dict[Path, str]:
-    """Target content for every file the kit wants to write in repo."""
+def planned(repo: Path, refresh_pins: bool = True) -> dict[Path, str]:
+    """Target content for every file the kit wants to write in repo.
+
+    With refresh_pins=False (check), a managed file that differs only in the pinned repo-kit
+    commit is up to date; apply and update move the pin to the current stable commit."""
     out: dict[Path, str] = {}
     blocks = block_text()
     today = dt.date.today().isoformat()
@@ -133,9 +177,15 @@ def planned(repo: Path) -> dict[Path, str]:
             rel = path.relative_to(TEMPLATES / kind)
             if path.is_file() and not (repo / rel).exists():
                 out[repo / rel] = path.read_text(encoding="utf-8")
-    for path, content in managed_files(repo).items():
-        if not path.exists() or kit_owned(path):
-            out[path] = content
+    for path, template in managed_files(repo).items():
+        if path.exists() and not kit_owned(path):
+            continue
+        if KIT_SHA in template:
+            if not refresh_pins and path.exists() and unpinned(path.read_text(encoding="utf-8")) == template:
+                continue
+            out[path] = template.replace(KIT_SHA, stable_sha())
+        else:
+            out[path] = template
     # AGENTS.md: block on top, repository part below
     agents = repo / "AGENTS.md"
     if agents.exists():
@@ -367,7 +417,7 @@ def cmd_apply(repo: Path, own_product: bool = False) -> int:
 
 
 def cmd_check(repo: Path) -> int:
-    drift = planned(repo)
+    drift = planned(repo, refresh_pins=False)
     for path in drift:
         print(f"drift  {path.relative_to(repo)}")
     found = findings(repo)

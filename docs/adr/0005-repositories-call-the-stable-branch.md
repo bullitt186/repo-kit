@@ -1,6 +1,6 @@
 # ADR-0005: Repositories call the stable branch, not a moving tag
 
-- **Status:** Accepted
+- **Status:** Superseded by ADR-0011
 - **Date:** 2026-11-24
 
 ## Context

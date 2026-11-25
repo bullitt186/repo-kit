@@ -8,3 +8,6 @@ updates:
       interval: weekly
     cooldown:
       default-days: 7   # wait a week after a release before updating
+    ignore:
+      # repo-kit's reusable workflows are pinned to its stable branch; kit.py update moves them (ADR-0011)
+      - dependency-name: "bullitt186/repo-kit*"

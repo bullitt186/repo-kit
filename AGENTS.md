@@ -155,7 +155,7 @@ change.
 | `templates/seed/`, `templates/seed-github/` | files created in a repository when missing, never overwritten |
 | `scripts/kit.py` | `apply`, `check`, `score`, `update`, `scorecard`, `github` |
 | `scripts/pr_hygiene.py` | the PR hygiene check, standard library only |
-| `.github/workflows/hygiene-reusable.yml`, `security-reusable.yml` | reusable workflows the repositories call at `@stable-v2` |
+| `.github/workflows/hygiene-reusable.yml`, `security-reusable.yml` | reusable workflows the repositories call at the commit of `stable-v2` (`@<sha> # stable-v2`, ADR-0011) |
 | `docs/CI_STANDARD.md`, `docs/RELEASING.md` | standards the repositories implement |
 | `tests/` | unit tests for both scripts |
 | `docs/adr/` | decisions behind the kit |
@@ -172,7 +172,8 @@ change.
 ### Rules specific to this repository
 
 - The repositories call the reusable workflows and the script on a release branch
-  (ADR-0005): `stable` for kit v1, `stable-v2` for kit v2. The current one only
+  (ADR-0005, ADR-0011): `stable` for kit v1, `stable-v2` for kit v2. The managed
+  callers pin the workflow to that branch's commit; `kit.py apply`/`update` move the pin. The current one only
   moves forward to a commit of `main` whose CI is green, by fast-forward. A change
   that can turn a passing repository red needs the next branch (`stable-v3`), an
   ADR and a new `VERSION` in `kit.py`.
