@@ -187,6 +187,14 @@ class DependencyUpdateTest(unittest.TestCase):
         r.commit({"renovate.json": "{}\n"})
         self.assertEqual(r.hygiene().returncode, 0, r.hygiene().stdout)
 
+    def test_example_files_are_documentation_scanner_ignores_stay_code(self) -> None:
+        r = Repo({"CHANGELOG.md": "# C\n"})
+        r.commit({"docker-compose.example.yml": "services: {}\n", "config/app.example": "x\n"})
+        self.assertEqual(r.hygiene().returncode, 0, r.hygiene().stdout)
+        r.commit({".gitleaksignore": "abc:tests/x.py:generic-api-key:1\n"})
+        self.assertEqual(r.hygiene().returncode, 1)          # maintainer decision 2026-11-25: needs a waiver
+        self.assertEqual(r.hygiene("no-test-change,skip-changelog").returncode, 0)
+
     def test_label_does_not_cover_code(self) -> None:
         r = Repo({"package.json": "{}\n"})
         r.commit({"package.json": '{"a": "2"}\n', "src/app.py": "x = 3\n"})

@@ -14,6 +14,9 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions: [Sem
 
 ### Fixed
 
+- PR hygiene treats example files (`*.example`, `*.example.*`) as documentation. Scanner ignore
+  files (`.gitleaksignore`, `.trivyignore`) stay subject to the rules: an ignore entry needs the
+  maintainer's waiver label (maintainer decision 2026-11-25).
 - `kit.py github` and `kit.py forgejo` create the `dependencies` label. Renovate on Forgejo drops a
   label that does not exist, so its pull requests failed PR hygiene as code changes (#17). Run
   `kit.py github` or `kit.py forgejo` once per repository; `kit.py score` shows `updates` yellow while the
