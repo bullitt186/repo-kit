@@ -58,7 +58,10 @@ ENFORCE_FROM = {
     "scope-adr": "2026-12-15",
     "issue-link": "2026-12-15",
     "size": "2026-12-15",
+    "changelog-order": "2026-12-15",
 }
+# Section order of Keep a Changelog 1.1.0; other headings (e.g. "Upgrade notes") are not checked.
+CHANGELOG_SECTIONS = ("Added", "Changed", "Deprecated", "Removed", "Fixed", "Security")
 LOCKFILES = ["*.lock", "**/*.lock", "**/package-lock.json", "package-lock.json", "**/go.sum", "go.sum",
              "**/pnpm-lock.yaml", "pnpm-lock.yaml", "**/Cargo.lock"]
 # Files a dependency update may touch; a pull request labelled `dependencies` (Dependabot,
@@ -235,6 +238,19 @@ def check_adrs(root: Path) -> list[str]:
     return errors
 
 
+def check_changelog_order(text: str) -> list[str]:
+    """Keep a Changelog sections under [Unreleased] in their standard order, each at most once."""
+    m = re.search(r"^## \[Unreleased\][^\n]*\n(.*?)(?=^## |\Z)", text, re.MULTILINE | re.DOTALL)
+    if not m:
+        return []
+    found = [h for h in re.findall(r"^### +(.+?)\s*$", m.group(1), re.MULTILINE) if h in CHANGELOG_SECTIONS]
+    expected = sorted(dict.fromkeys(found), key=CHANGELOG_SECTIONS.index)
+    if found != expected:
+        return [f"[Unreleased] sections are {', '.join(found)}; use each once, in the order "
+                f"{', '.join(expected)} (Keep a Changelog)"]
+    return []
+
+
 def check_links(root: Path, md_files: list[str]) -> list[str]:
     errors: list[str] = []
     for rel in md_files:
@@ -315,6 +331,9 @@ def main() -> int:
     if size > max_lines and "large-change" not in labels:
         rule("size", f"{size} changed lines exceed {max_lines}: split the pull request"
                       " (waiver label 'large-change' is maintainer-only)")
+    if changelog != "none" and changelog in paths:
+        for problem in check_changelog_order((root / changelog).read_text(encoding="utf-8")):
+            rule("changelog-order", problem)
     errors += check_adrs(root)
     errors += check_links(root, [p for st, p in files if st != "D" and p.endswith(".md")])
 

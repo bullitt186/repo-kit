@@ -385,6 +385,43 @@ class GracePeriodTest(unittest.TestCase):
         self.assertEqual(r.hygiene(today="2000-01-01").returncode, 1)
 
 
+class ChangelogOrderTest(unittest.TestCase):
+    """[Unreleased] sections in Keep a Changelog 1.1.0 order (Added, Changed, Deprecated, Removed,
+    Fixed, Security); found by acceptance test 3, where a contributor put Fixed before Changed."""
+
+    BASE = "# Changelog\n\n## [Unreleased]\n\n## [1.0.0] - 2026-01-01\n\n### Fixed\n\n- old\n\n### Added\n\n- old\n"
+
+    def run_with(self, unreleased: str, today: str = "2027-01-01") -> subprocess.CompletedProcess:
+        r = Repo({"CHANGELOG.md": self.BASE})
+        r.commit({"CHANGELOG.md": self.BASE.replace("## [Unreleased]\n", "## [Unreleased]\n\n" + unreleased),
+                  "src/app.py": "x = 2\n", "tests/test_app.py": "t\n"})
+        return r.hygiene(today=today)
+
+    def test_standard_order_passes(self) -> None:
+        res = self.run_with("### Added\n\n- a\n\n### Changed\n\n- c\n\n### Fixed\n\n- f\n\n### Upgrade notes\n\n- u\n")
+        self.assertEqual(res.returncode, 0, res.stdout)
+
+    def test_fixed_before_changed_blocks_after_grace(self) -> None:
+        res = self.run_with("### Fixed\n\n- f\n\n### Changed\n\n- c\n")
+        self.assertEqual(res.returncode, 1, res.stdout)
+        self.assertIn("use each once, in the order Changed, Fixed", res.stdout)
+
+    def test_removed_comes_before_fixed(self) -> None:
+        self.assertEqual(self.run_with("### Fixed\n\n- f\n\n### Removed\n\n- r\n").returncode, 1)
+
+    def test_duplicate_section_blocks(self) -> None:
+        self.assertEqual(self.run_with("### Added\n\n- a\n\n### Added\n\n- b\n").returncode, 1)
+
+    def test_only_warns_before_its_date(self) -> None:
+        res = self.run_with("### Fixed\n\n- f\n\n### Added\n\n- a\n", today="2026-12-14")
+        self.assertEqual(res.returncode, 0)
+        self.assertIn("blocks from 2026-12-15", res.stdout)
+
+    def test_released_sections_are_not_checked(self) -> None:
+        # BASE's 1.0.0 has Fixed before Added: history stays as it is
+        self.assertEqual(self.run_with("### Added\n\n- a\n").returncode, 0)
+
+
 class GithubSlugTest(unittest.TestCase):
     def test_exact_host_only(self) -> None:
         sys.path.insert(0, str(KIT / "scripts"))
