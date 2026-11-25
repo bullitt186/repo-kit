@@ -56,6 +56,8 @@ LABELS = {
     "large-change": ("c5def5", "Maintainer waiver: PR hygiene size rule"),
     "bug": ("d73a4a", "Something does not work as documented"),
     "enhancement": ("a2eeef", "New feature or request"),
+    # Renovate drops labels that do not exist on Forgejo; PR hygiene needs this one (#17).
+    "dependencies": ("0366d6", "Pull requests that update a dependency file"),
 }
 HYGIENE_CHECK = "hygiene / PR hygiene"
 SECURITY_CHECKS = ["security / Secret scan", "security / Dependency review"]
@@ -275,7 +277,13 @@ def score(repo: Path) -> dict[str, tuple[str, str]]:
     out["security"] = ("green", "") if "gitleaks" in flows or "security-reusable.yml" in flows else ("red", "no secret scan in CI")
     upd = any((repo / f).exists() for f in (".github/dependabot.yml", "renovate.json", "renovate.json5",
                                              ".renovaterc", ".github/renovate.json"))
-    out["updates"] = ("green", "") if upd else ("red", "no Dependabot or Renovate")
+    labels = forge_labels(repo) if upd else None   # None: not readable here, no verdict
+    if not upd:
+        out["updates"] = ("red", "no Dependabot or Renovate")
+    elif labels is not None and "dependencies" not in labels:
+        out["updates"] = ("yellow", "label dependencies missing on the forge: run kit.py github or forgejo")
+    else:
+        out["updates"] = ("green", "")
     stop = text("scripts/agent-stop-check.sh")
     if "agent-stop-check" not in text(".claude/settings.json"):
         out["stop hook"] = ("red", "not registered")
@@ -290,6 +298,34 @@ def score(repo: Path) -> dict[str, tuple[str, str]]:
             found = any(w in signs for w in words)
             out[disc] = ("green", "") if found else ("red", "not found in CI or build files")
     return out
+
+
+def forge_labels(repo: Path) -> set[str] | None:
+    """Label names of origin's repository on its forge, or None when they cannot be read.
+
+    GitHub through `gh`; Forgejo only with FORGEJO_API set. One request, no retry: an auth error
+    stops the run instead of being repeated for every repository."""
+    url = subprocess.run(["git", "remote", "get-url", "origin"], cwd=repo,
+                         capture_output=True, text=True, check=False).stdout.strip()
+    if not url:
+        return None
+    slug = github_slug(url)
+    if slug:
+        labels = gh(f"repos/{slug}/labels?per_page=100", check=False)
+    elif os.environ.get("FORGEJO_API"):
+        import urllib.error  # noqa: PLC0415
+        try:
+            labels = forgejo_client(os.environ["FORGEJO_API"], forgejo_token())(
+                "GET", f"/repos/{forgejo_slug(url)}/labels?limit=100")
+        except urllib.error.HTTPError as err:
+            if err.code in (401, 403):
+                raise SystemExit(f"Forgejo refused the token (HTTP {err.code}); stopping") from err
+            return None
+        except (urllib.error.URLError, OSError, SystemExit):   # offline, or no token configured
+            return None
+    else:
+        return None
+    return {lab["name"] for lab in labels} if isinstance(labels, list) else None
 
 
 def load_list(repo: Path, key: str) -> list[str]:

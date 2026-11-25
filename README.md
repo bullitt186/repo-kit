@@ -75,7 +75,8 @@ python3 scripts/kit.py update ../some-repo     # weekly pull: dated update branc
 ```
 
 `github` sets squash merge with branch deletion and auto-merge, creates the
-labels from `CONTRIBUTING.md`, makes the workflow token read-only, enables
+labels from `CONTRIBUTING.md` (including `dependencies`, which the Dependabot and
+Renovate seeds set and PR hygiene relies on), makes the workflow token read-only, enables
 Dependabot alerts and security updates, and requires approval for outside
 contributors' workflows unless the repository chose otherwise. On public
 repositories it also enables secret scanning with push protection, CodeQL
@@ -84,6 +85,12 @@ default branch (pull request required, resolved threads, required checks
 including `hygiene / PR hygiene` and the security checks, no force push or
 deletion) and one that protects `v*` tags. Existing rulesets are kept; missing
 checks are added.
+
+`forgejo` creates the same labels on Forgejo; Renovate silently drops a label
+that does not exist there. `score` turns `updates` yellow when origin's
+repository lacks the `dependencies` label; it reads the labels with `gh` on
+GitHub and, on Forgejo, only when `FORGEJO_API` and a token are set (otherwise it
+gives no verdict on the label).
 
 Releasing the kit: after a change is merged and CI on `main` is green,
 fast-forward the branch the repositories use: `git push origin main:stable-v2`
