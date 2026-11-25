@@ -392,7 +392,13 @@ def cmd_update(repo: Path, push: bool) -> int:
     wt = repo / ".claude" / "worktrees" / "kit-update"
     if wt.exists():
         git_out(repo, "worktree", "remove", "--force", str(wt))
-    branch = f"chore/repo-kit-update-{dt.date.today():%Y%m%d}"
+    # A merged update branch can stay on the forge; a second run on the same day takes the next name.
+    taken = set(git_out(repo, "ls-remote", "--heads", "origin").split())
+    branch = base = f"chore/repo-kit-update-{dt.date.today():%Y%m%d}"
+    n = 1
+    while f"refs/heads/{branch}" in taken:
+        n += 1
+        branch = f"{base}-{n}"
     git_out(repo, "worktree", "add", "-q", "-B", branch, str(wt), f"origin/{default}")
     try:
         before = score(wt)
@@ -436,7 +442,8 @@ def cmd_update(repo: Path, push: bool) -> int:
                 result["pr"] = pr.get("html_url")
                 if not todo:
                     call("POST", f"/repos/{slug}/pulls/{pr['number']}/merge",
-                         {"Do": "squash", "merge_when_checks_succeed": True})
+                         {"Do": "squash", "merge_when_checks_succeed": True,
+                          "delete_branch_after_merge": True})
         return 0
     except subprocess.CalledProcessError as err:
         # e.g. a pre-commit hook that needs the repository's dev environment: never bypass it,

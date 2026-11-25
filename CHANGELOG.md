@@ -17,6 +17,9 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions: [Sem
 
 ### Fixed
 
+- `kit.py update` takes a free branch name when an update branch of the same day already exists on
+  the forge (a second run failed with a rejected push), and Forgejo update pull requests delete
+  their branch after the merge.
 - PR hygiene accepts release pull requests without waiver labels (#19). It recognises them by the
   diff: only the version of `pyproject.toml` (`[project]` or `[tool.poetry]`) or `package.json`
   changed, plus the project's own entry in `package-lock.json` or `uv.lock`, and `CHANGELOG.md`

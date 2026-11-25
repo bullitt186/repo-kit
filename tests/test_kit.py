@@ -610,6 +610,19 @@ class UpdateTest(unittest.TestCase):
         self.assertIn("repo-kit:begin v", git(self.r.root, "show", f"{branch[0]}:AGENTS.md"))
         self.assertEqual(git(self.r.root, "status", "--porcelain"), "")   # the checkout itself is untouched
 
+    def test_second_update_on_one_day_takes_a_free_branch_name(self) -> None:
+        # The first update's branch stays on the forge after its merge; reusing the name fails the push.
+        import datetime as dt  # noqa: PLC0415
+        today = f"chore/repo-kit-update-{dt.date.today():%Y%m%d}"
+        self.r.write({"AGENTS.md": "# A\n\n<!-- repo-kit:begin v1 -->\nold\n<!-- repo-kit:end -->\n"})
+        git(self.r.root, "add", "-A")
+        git(self.r.root, "commit", "-qm", "kit v1")
+        git(self.r.root, "push", "-q", "origin", "main")
+        git(self.r.root, "push", "-q", "origin", f"main:refs/heads/{today}")
+        out = self.update()
+        self.assertTrue(out["status"].startswith("update:"), out)
+        self.assertIn(f"{today}-2", git(self.r.root, "branch").split())
+
     def test_failing_commit_hook_is_reported_not_crashing(self) -> None:
         self.r.write({"AGENTS.md": "# A\n\n<!-- repo-kit:begin v1 -->\nold\n<!-- repo-kit:end -->\n"})
         git(self.r.root, "add", "-A")
