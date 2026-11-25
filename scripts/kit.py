@@ -159,6 +159,27 @@ def findings(repo: Path) -> list[str]:
     settings = repo / ".claude" / "settings.json"
     if settings.exists() and "agent-stop-check" not in settings.read_text(encoding="utf-8"):
         out.append("hook   .claude/settings.json has no Stop hook running scripts/agent-stop-check.sh")
+    out += protected_pushes(repo)
+    return out
+
+
+# A workflow step that pushes to the default branch: git push ... HEAD:main / origin main.
+PUSH_TO_DEFAULT = re.compile(r"\bgit\b.*\bpush\b.*(?:HEAD:(?:refs/heads/)?(?:main|master)\b|\s(?:main|master)\s*$)")
+
+
+def protected_pushes(repo: Path) -> list[str]:
+    """Workflow pushes to the protected default branch that still carry the run token.
+
+    The checkout stores the run token as http.extraHeader, which overrides credentials in the
+    push URL; the run token's bot cannot push to a protected branch (Forgejo fails with HTTP 500
+    in pre-receive). A push that resets the header (git -c http.extraHeader= push) passes."""
+    out = []
+    for wf in sorted([*repo.glob(".forgejo/workflows/*.y*ml"), *repo.glob(".github/workflows/*.y*ml")]):
+        for no, line in enumerate(wf.read_text(encoding="utf-8").splitlines(), 1):
+            code = line.split(" #", 1)[0]
+            if PUSH_TO_DEFAULT.search(code) and "http.extraHeader=" not in code.replace(" ", ""):
+                out.append(f"push   {wf.relative_to(repo)}:{no} pushes to the protected default branch "
+                           "with the run token (docs/CI_STANDARD.md, Workflow hardening)")
     return out
 
 

@@ -418,6 +418,38 @@ class CodeqlDetectionTest(unittest.TestCase):
             kit.gh = original
 
 
+class ProtectedPushTest(unittest.TestCase):
+    """A workflow push to the protected default branch must not run with the run token."""
+
+    def findings_for(self, step: str) -> list[str]:
+        sys.path.insert(0, str(KIT / "scripts"))
+        import kit  # noqa: PLC0415
+        with tempfile.TemporaryDirectory() as d:
+            wf = Path(d) / ".forgejo" / "workflows"
+            wf.mkdir(parents=True)
+            (wf / "build.yml").write_text(f"jobs:\n  build:\n    steps:\n      - run: |\n          {step}\n",
+                                          encoding="utf-8")
+            return kit.protected_pushes(Path(d))
+
+    def test_push_with_run_token_header_is_a_finding(self) -> None:
+        # trackbox build.yml before #123: the checkout's extraHeader overrode the URL credentials
+        found = self.findings_for('git push "https://u:${TOKEN}@forge.example/o/r.git" HEAD:main')
+        self.assertEqual(len(found), 1)
+        self.assertTrue(found[0].startswith("push   .forgejo/workflows/build.yml:5 "))
+
+    def test_push_origin_main_is_a_finding(self) -> None:
+        self.assertEqual(len(self.findings_for("git push origin main")), 1)
+
+    def test_push_that_resets_the_header_passes(self) -> None:
+        self.assertEqual(self.findings_for(
+            'git -c http.extraHeader= push "https://u:${TOKEN}@forge.example/o/r.git" HEAD:main'), [])
+
+    def test_push_to_another_repository_or_branch_passes(self) -> None:
+        self.assertEqual(self.findings_for("git push"), [])                 # deploy repo clone
+        self.assertEqual(self.findings_for("git push origin HEAD:release"), [])
+        self.assertEqual(self.findings_for("git push origin v1.2.3"), [])
+
+
 class ForgejoConfigTest(unittest.TestCase):
     def fake(self, protections: list, fork: bool = False):
         calls = []

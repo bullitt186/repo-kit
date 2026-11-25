@@ -11,6 +11,9 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions: [Sem
   "merge when checks succeed" when there are no findings.
 - `kit.py forgejo`: labels and default-branch protection on Forgejo (required checks PR hygiene and
   secret scan on merge, no force push or deletion; direct pushes stay possible for CI that commits).
+- `kit.py check` (and so the weekly update) reports a workflow that pushes to the protected
+  default branch with the run token. Such a push fails on Forgejo with HTTP 500 once the branch is
+  protected; the CI standard shows the push that works.
 
 ### Fixed
 
