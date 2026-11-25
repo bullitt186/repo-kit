@@ -17,6 +17,9 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions: [Sem
 
 ### Fixed
 
+- `kit.py update` reports when GitHub refuses auto-merge (private repositories on a plan
+  without it) as a finding for an agent, so the weekly run merges the pull request instead of
+  leaving it open.
 - `kit.py update` takes a free branch name when an update branch of the same day already exists on
   the forge (a second run failed with a rejected push), and Forgejo update pull requests delete
   their branch after the merge.

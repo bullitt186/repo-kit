@@ -380,6 +380,15 @@ def git_out(repo: Path, *args: str) -> str:
     return subprocess.run(["git", *args], cwd=repo, capture_output=True, text=True, check=True).stdout.strip()
 
 
+def github_auto_merge(url: str, cwd: Path) -> bool:
+    """Ask GitHub to squash-merge the pull request when CI is green.
+
+    False when GitHub refuses, e.g. a private repository on a plan without auto-merge: then
+    nobody merges the pull request unless the weekly run hands it to an agent."""
+    return subprocess.run(["gh", "pr", "merge", url, "--auto", "--squash"], cwd=cwd,
+                          capture_output=True, text=True, check=False).returncode == 0
+
+
 def cmd_update(repo: Path, push: bool) -> int:
     """Weekly pull of the kit into one repository (ADR-0009). Prints one JSON line."""
     result: dict = {"repo": repo.name, "forge": forge(repo)}
@@ -431,9 +440,8 @@ def cmd_update(repo: Path, push: bool) -> int:
                                       title, "--body", body],
                                      cwd=wt, capture_output=True, text=True, check=False).stdout.strip()
                 result["pr"] = url
-                if url and not todo:
-                    subprocess.run(["gh", "pr", "merge", url, "--auto", "--squash"], cwd=wt,
-                                   capture_output=True, text=True, check=False)
+                if url and not todo and not github_auto_merge(url, wt):
+                    result["status"] += ", auto-merge unavailable (finding(s) for an agent)"
             elif os.environ.get("FORGEJO_API"):
                 slug = forgejo_slug(git_out(repo, "remote", "get-url", "origin"))
                 call = forgejo_client(os.environ["FORGEJO_API"], forgejo_token())
