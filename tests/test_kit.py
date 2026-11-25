@@ -418,6 +418,29 @@ class CodeqlDetectionTest(unittest.TestCase):
             kit.gh = original
 
 
+class GithubAutoMergeTest(unittest.TestCase):
+    """Private repositories on a free plan cannot auto-merge; the update PR would stay open."""
+
+    def merge(self, exit_code: int) -> bool:
+        sys.path.insert(0, str(KIT / "scripts"))
+        import kit  # noqa: PLC0415
+        fake = Path(tempfile.mkdtemp())
+        (fake / "gh").write_text(f"#!/bin/sh\nexit {exit_code}\n", encoding="utf-8")
+        (fake / "gh").chmod(0o755)
+        path = os.environ["PATH"]
+        os.environ["PATH"] = f"{fake}:{path}"
+        try:
+            return kit.github_auto_merge("https://github.com/o/r/pull/1", fake)
+        finally:
+            os.environ["PATH"] = path
+
+    def test_refused_auto_merge_is_reported(self) -> None:
+        self.assertFalse(self.merge(1))
+
+    def test_accepted_auto_merge(self) -> None:
+        self.assertTrue(self.merge(0))
+
+
 class ProtectedPushTest(unittest.TestCase):
     """A workflow push to the protected default branch must not run with the run token."""
 
