@@ -14,6 +14,9 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions: [Sem
 
 ### Fixed
 
+- PR hygiene treats example files (`*.example`, `*.example.*`) as documentation. Scanner ignore
+  files (`.gitleaksignore`, `.trivyignore`) stay subject to the rules: an ignore entry needs the
+  maintainer's waiver label (maintainer decision 2026-11-25).
 - `kit.py update` reports a failing commit or push (for example a pre-commit hook that needs the
   repository's dev environment) as a finding for an agent instead of crashing; hooks are never bypassed.
 - `kit.py score` treats an older pinned kit commit as in sync, like `check`.
