@@ -43,6 +43,13 @@ code are handled in review (killed or explained).
 - Workflows of outside contributors from forks need maintainer approval before they run; a
   repository with a self-hosted runner requires it for every outside contributor.
 - Secrets are never available to pull requests from forks.
+- A workflow that pushes to the repository's own protected default branch (a generated
+  changelog, a version bump) does not push with the run token: the checkout stores it as
+  `http.extraHeader`, which overrides credentials in the push URL, and the run token's bot may not
+  push to a protected branch (Forgejo rejects it with HTTP 500 in pre-receive). Push with a token
+  of a user who may push, and reset the header for that command:
+  `git -c http.extraHeader= push "https://<user>:<token>@<forge>/<owner>/<repo>.git" HEAD:main`.
+  `kit.py check` reports such pushes.
 
 ## Local equivalents (AGENTS.md "Commands")
 
