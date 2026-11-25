@@ -68,7 +68,8 @@ with them. A one-test-at-a-time red/green cycle is not required.
 - Changing an expected value in an existing test needs a reason in the commit
   message that names the source of the new value.
 - Coverage shows what ran, not whether a test notices a wrong result. Run mutation
-  testing on the code you changed (see Commands below); kill a surviving mutant
+  testing on every line your change touches, including the callers you edited,
+  not only new functions (see Commands below); kill a surviving mutant
   with a test, or say in the pull request why it is equivalent. Without a
   mutation tool, mutate by hand: for each changed branch or condition, break it
   (invert, drop, return a constant), run the tests, revert, and list each mutant
@@ -90,7 +91,8 @@ Changelog entries go under `[Unreleased]`, in the Keep a Changelog sections
 project: what changes for them and what they have to do, not which functions
 moved. A breaking change gets an entry under "Upgrade notes" with the steps.
 Name outside contributors and link their issue or pull request: write the issue
-link with your entry, and add your handle and the pull request link to it as soon
+reference with your entry (on GitHub a link; on Forgejo the bare `#N`, because a
+link would put the forge's host name into the repository), and add your handle and the pull request link to it as soon
 as the pull request exists. Releases, tags
 and version numbers are the maintainer's
 ([release standard](https://github.com/bullitt186/repo-kit/blob/main/docs/RELEASING.md)).
