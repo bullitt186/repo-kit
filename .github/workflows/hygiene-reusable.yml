@@ -13,12 +13,14 @@ jobs:
     name: PR hygiene
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: bullitt186/repo-kit
+          # The script follows the stable branch on purpose: rule fixes and grace dates reach
+          # every repository at once; the caller pins only this workflow file (ADR-0011).
           ref: stable-v2
           path: .repo-kit
       - name: Check

@@ -87,6 +87,9 @@ checks are added.
 Releasing the kit: after a change is merged and CI on `main` is green,
 fast-forward the branch the repositories use: `git push origin main:stable-v2`
 (never forced; see [ADR-0005](docs/adr/0005-repositories-call-the-stable-branch.md)).
+The callers pin the reusable workflows to the commit of `stable-v2`
+([ADR-0011](docs/adr/0011-callers-pin-the-stable-commit.md)), so a changed workflow file reaches a
+repository with its next weekly `kit.py update` pull request; `pr_hygiene.py` follows the branch.
 
 New repository: create it, run `apply`, fill in the repository part of
 `AGENTS.md` (purpose, layout, commands), commit through a pull request, then

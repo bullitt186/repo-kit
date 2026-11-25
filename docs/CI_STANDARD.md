@@ -35,6 +35,9 @@ code are handled in review (killed or explained).
 - Dependencies are pinned (lockfile or exact versions, images by digest), never `latest`.
 - Third-party actions are pinned to a full commit SHA with the version in a comment;
   Dependabot or Renovate keeps the pins current. First-party `actions/*` may use a major tag.
+- repo-kit's reusable workflows are called at the commit of its `stable-vN` branch,
+  `@<sha> # stable-vN`; `kit.py update` moves the pin weekly, Dependabot ignores it
+  ([ADR-0011](adr/0011-callers-pin-the-stable-commit.md)).
 - `permissions:` is set per workflow, `contents: read` by default; a job asks only for what it needs.
 - No `pull_request_target` workflow checks out or runs code from the pull request.
 - Workflows of outside contributors from forks need maintainer approval before they run; a

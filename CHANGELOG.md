@@ -7,6 +7,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions: [Sem
 
 ### Fixed
 
+- Managed caller workflows pin repo-kit's reusable workflows to the commit of `stable-v2`
+  (`@<sha> # stable-v2`) instead of the branch, which CodeQL reported as `actions/unpinned-tag`
+  in every repository (#12, ADR-0011). `kit.py apply` and the weekly `kit.py update` move the pin;
+  `kit.py check` accepts any pinned commit. The GitHub seed `dependabot.yml` ignores these pins,
+  and `hygiene-reusable.yml` pins `actions/checkout` to a SHA.
 - Forgejo security workflow: a push scans only the pushed commits (it scanned the whole history and
   turned `main` red for old findings); the full history and the Trivy report run weekly.
 - `renovate.json` is not code for PR hygiene.
@@ -29,7 +34,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions: [Sem
 ### Upgrade notes
 
 - Kit v2 runs on the branch `stable-v2`. Repositories move with `kit.py apply` (the managed
-  workflows then call `@stable-v2`) and fill the new placeholders `kit.py check` reports
+  workflows then call the commit of `stable-v2`, ADR-0011) and fill the new placeholders `kit.py check` reports
   (`docs/SCOPE.md`, `scripts/agent-stop-check.sh`, the fast/full/mutation rows in `AGENTS.md`).
   Repositories that do not re-apply stay on `stable` (v1) unchanged.
 

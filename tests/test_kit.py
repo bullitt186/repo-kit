@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 import tempfile
@@ -29,6 +30,9 @@ d
 
 e
 """
+# kit.py resolves the stable commit from GitHub; tests stay offline with a fixed one (ADR-0011).
+PINNED = "1" * 40
+os.environ["REPO_KIT_SHA"] = PINNED
 INDEX = "| [0001](0001-record-architecture-decisions.md) | Record | Accepted |\n"
 
 
@@ -394,8 +398,34 @@ class KitTest(unittest.TestCase):
         git(r.root, "remote", "add", "origin", "https://github.com/o/r.git")
         self.run_kit("apply", str(r.root))
         wf = (r.root / ".github/workflows/pr-hygiene.yml").read_text()
-        self.assertIn("hygiene-reusable.yml@stable-v2", wf)
+        self.assertIn(f"hygiene-reusable.yml@{PINNED} # stable-v2\n", wf)
+        self.assertIn(f"security-reusable.yml@{PINNED} # stable-v2\n",
+                      (r.root / ".github/workflows/security.yml").read_text())
+        self.assertNotIn("{{", wf)
         self.assertFalse((r.root / ".forgejo").exists())
+
+    def test_pin_moves_on_apply_and_any_pin_is_in_sync_for_check(self) -> None:
+        r = Repo()
+        git(r.root, "remote", "add", "origin", "https://github.com/o/r.git")
+        self.run_kit("apply", str(r.root))
+        wf = r.root / ".github/workflows/pr-hygiene.yml"
+        older = wf.read_text().replace(PINNED, "2" * 40)
+        wf.write_text(older)
+        self.assertNotIn("drift  .github/workflows/pr-hygiene.yml", self.run_kit("check", str(r.root)).stdout)
+        wf.write_text(older.replace(f"@{'2' * 40} # stable-v2", "@stable-v2"))   # unpinned, as before ADR-0011
+        self.assertIn("drift  .github/workflows/pr-hygiene.yml", self.run_kit("check", str(r.root)).stdout)
+        wf.write_text(older)
+        self.assertEqual(self.run_kit("apply", str(r.root)).stdout, "wrote .github/workflows/pr-hygiene.yml\n")
+        self.assertIn(f"@{PINNED} # stable-v2\n", wf.read_text())
+
+    def test_malformed_pin_override_is_refused(self) -> None:
+        r = Repo()
+        git(r.root, "remote", "add", "origin", "https://github.com/o/r.git")
+        res = subprocess.run([sys.executable, str(KITPY), "apply", str(r.root)], capture_output=True, text=True,
+                             check=False, env={**os.environ, "REPO_KIT_SHA": "stable-v2"})
+        self.assertNotEqual(res.returncode, 0)
+        self.assertIn("40-character", res.stderr)
+        self.assertFalse((r.root / ".github/workflows/pr-hygiene.yml").exists())
 
     def test_forgejo_workflow_change_is_not_code(self) -> None:
         r = Repo()
