@@ -5,6 +5,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions: [Sem
 
 ## [Unreleased]
 
+### Fixed
+
+- PR hygiene recognises a release pull request that bumps the version in a
+  `manifest.json` (Home Assistant integrations, browser extensions); before, such a release
+  needed the `no-test-change` waiver.
+
 ## [2.0.0] - 2026-11-25
 
 ### Added
