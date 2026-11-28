@@ -47,7 +47,8 @@ every pull request:
 
 Waiver labels can only be set by the maintainer. A release pull request
 ([release standard](docs/RELEASING.md)) needs none: when it only bumps the version of
-`pyproject.toml` or `package.json` (and the project's entry in `package-lock.json` or `uv.lock`)
+`pyproject.toml`, `package.json` or a `manifest.json` (Home Assistant integration, browser
+extension), and the project's entry in `package-lock.json` or `uv.lock`,
 and moves `[Unreleased]` under a new version heading, it is not a code change. Run it locally
 before you push:
 

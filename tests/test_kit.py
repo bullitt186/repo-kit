@@ -275,6 +275,24 @@ class ReleasePullRequestTest(unittest.TestCase):
         r.commit({"CHANGELOG.md": CHANGELOG_RELEASED, "pyproject.toml": poetry.format(v="1.3.0")})
         self.assertEqual(r.hygiene().returncode, 0, r.hygiene().stdout)
 
+    def test_home_assistant_manifest_release_passes(self) -> None:
+        manifest = '{{\n  "domain": "app",\n  "requirements": [],\n  "version": "{v}"\n}}\n'
+        r = Repo({"CHANGELOG.md": CHANGELOG_BEFORE, "pyproject.toml": PYPROJECT.format(v="1.2.0", deps=""),
+                  "custom_components/app/manifest.json": manifest.format(v="1.2.0")})
+        r.commit({"CHANGELOG.md": CHANGELOG_RELEASED, "pyproject.toml": PYPROJECT.format(v="1.3.0", deps=""),
+                  "custom_components/app/manifest.json": manifest.format(v="1.3.0")})
+        res = r.hygiene()
+        self.assertEqual(res.returncode, 0, res.stdout)
+        self.assertIn("release pull request", res.stdout)
+
+    def test_manifest_json_with_other_change_is_no_release(self) -> None:
+        manifest = '{{\n  "domain": "app",\n  "requirements": [{req}],\n  "version": "{v}"\n}}\n'
+        r = Repo({"CHANGELOG.md": CHANGELOG_BEFORE,
+                  "custom_components/app/manifest.json": manifest.format(req="", v="1.2.0")})
+        r.commit({"CHANGELOG.md": CHANGELOG_RELEASED,
+                  "custom_components/app/manifest.json": manifest.format(req='"x"', v="1.3.0")})
+        self.assertIn("code changed without a test change", r.hygiene().stdout)
+
     def test_release_with_code_change_fails(self) -> None:
         r = self.python()
         r.commit({"CHANGELOG.md": CHANGELOG_RELEASED, "pyproject.toml": PYPROJECT.format(v="1.3.0", deps=""),

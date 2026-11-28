@@ -131,7 +131,7 @@ def load(path: str, text: str) -> dict | None:
     """A supported manifest or lockfile, parsed; None if unsupported or unreadable."""
     name = Path(path).name
     try:
-        if name in ("package.json", "package-lock.json"):
+        if name in ("package.json", "package-lock.json", "manifest.json"):   # manifest.json: Home Assistant, browser extensions
             data = json.loads(text)
         elif name in ("pyproject.toml", "uv.lock") and tomllib is not None:
             data = tomllib.loads(text)
@@ -148,7 +148,7 @@ def without_version(path: str, text: str) -> dict | None:
     if data is None:
         return None
     try:
-        data.pop("version", None)                                     # package.json, package-lock.json
+        data.pop("version", None)                                     # package.json, package-lock.json, manifest.json
         data.get("packages", {}).get("", {}).pop("version", None)     # package-lock.json root entry
         data.get("project", {}).pop("version", None)                  # pyproject.toml (PEP 621)
         data.get("tool", {}).get("poetry", {}).pop("version", None)   # pyproject.toml (Poetry)
